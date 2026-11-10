@@ -8,7 +8,15 @@ from django.forms import inlineformset_factory
 
 from .models import (Cliente, Documento, Linea, Pago, Producto, Recurrente,
                      RecurrenteLinea, Sociedad)
-from .utils import sin_ceros
+from .utils import formatear_rut, sin_ceros
+
+
+def casilla_rut(campo):
+    """Casilla de RUT: se formatea sola como 12.345.678-9 (ver static/core/rut.js)."""
+    campo.widget.attrs.update({
+        "data-rut": "1", "placeholder": "12.345.678-9", "maxlength": 12,
+        "autocomplete": "off", "pattern": r"\d{1,2}\.\d{3}\.\d{3}-[\dkK]",
+        "title": "Formato 12.345.678-9"})
 
 
 def etiqueta_cliente(cliente):
@@ -28,6 +36,10 @@ class FormBase(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if "rut" in self.fields:
+            casilla_rut(self.fields["rut"])
+            if self.initial.get("rut"):
+                self.initial["rut"] = formatear_rut(self.initial["rut"])
         if "giro" in self.fields:
             # El giro sugiere las actividades económicas del SII (se puede escribir otro texto).
             self.fields["giro"].widget.attrs.update(
@@ -198,6 +210,10 @@ class CertificadoForm(forms.Form):
     clave = forms.CharField(label="Clave del certificado", widget=forms.PasswordInput,
                             required=False)
     rut_titular = forms.CharField(label="RUT del titular", max_length=12)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        casilla_rut(self.fields["rut_titular"])
 
     def clean_rut_titular(self):
         from .utils import normalizar_rut

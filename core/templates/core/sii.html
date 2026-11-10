@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load formato %}
 {% block titulo %}Conexión SII{% endblock %}
 {% block contenido %}
 <div class="titulo">
@@ -19,7 +20,7 @@
     {% if certificado %}
     <dl class="datos" style="margin-bottom:14px">
       <dt>Titular</dt><dd>{{ certificado.titular }}</dd>
-      <dt>RUT</dt><dd>{{ certificado.rut_titular }}</dd>
+      <dt>RUT</dt><dd>{{ certificado.rut_titular|rut }}</dd>
       <dt>Vence</dt><dd>{{ certificado.vence|date:"d/m/Y" }} {% if not certificado.vigente %}<span class="etiqueta e-rechazado">Vencido</span>{% endif %}</dd>
     </dl>
     {% else %}

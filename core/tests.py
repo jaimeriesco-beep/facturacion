@@ -386,6 +386,9 @@ class ClientesYUsuariosTests(Base):
         self.client.post(reverse("documento_emitir", args=[doc.pk]), {"folio": 99})
         self.assertEqual(Documento.objects.get(pk=doc.pk).estado, Documento.BORRADOR)
         self.assertEqual(self.soc.clientes.get(razon_social="Tropera").nombre_fantasia, "Tropera")
+        r = self.client.get(reverse("cliente_editar", args=[self.cli.pk]))
+        self.assertContains(r, 'value="76.192.083-9"')   # el RUT guardado se muestra con puntos
+        self.assertContains(r, "data-rut")
         r = self.client.get(reverse("cliente_nuevo"))
         self.assertContains(r, 'list="actividades-sii"')
         self.assertContains(r, 'data-codigo="561000">561000</option>')

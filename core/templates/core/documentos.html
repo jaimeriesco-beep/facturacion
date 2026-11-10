@@ -1,9 +1,9 @@
 {% extends "core/base.html" %}
 {% load formato %}
-{% block titulo %}Documentos{% endblock %}
+{% block titulo %}Documentos de venta{% endblock %}
 {% block contenido %}
 <div class="titulo">
-  <h1>Documentos</h1>
+  <h1>Documentos de venta</h1>
   <div class="acciones">
     <a class="boton primario" href="{% url 'documento_nuevo' 33 %}">Nueva factura</a>
     <a class="boton" href="{% url 'documento_nuevo' 34 %}">Nueva factura exenta</a>

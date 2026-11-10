@@ -26,6 +26,9 @@ details[open] summary { margin-bottom: 10px; }
 .menu a { display: block; color: #d6e6dc; padding: 8px 10px; border-radius: 6px; }
 .menu a:hover { background: rgba(255,255,255,.08); text-decoration: none; }
 .menu a.activo { background: rgba(255,255,255,.16); color: #fff; font-weight: 600; }
+.menu .seccion { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: #8fb8a0; padding: 16px 10px 4px; }
+.menu .pronto { display: block; padding: 6px 10px; color: #8fb8a0; font-style: italic; font-size: 13px; }
 .menu .separador { height: 1px; background: rgba(255,255,255,.15); margin: 10px; }
 .contenido { min-width: 0; }
 .barra { display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -115,5 +118,6 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
   .app { grid-template-columns: 1fr; }
   .menu { display: flex; flex-wrap: wrap; gap: 2px; padding: 10px; }
   .menu .marca { width: 100%; padding-bottom: 6px; } .menu .separador { display: none; }
+  .menu .seccion { width: 100%; padding-top: 8px; }
   .dos { grid-template-columns: 1fr; } main { padding: 16px; }
 }

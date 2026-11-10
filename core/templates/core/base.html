@@ -12,14 +12,17 @@
   <nav class="menu">
     <a class="marca" href="{% url 'inicio' %}">{% if sociedad_actual.logo %}<img src="{% url 'sociedad_logo' sociedad_actual.pk %}" alt="{{ sociedad_actual.razon_social }}">{% else %}Facturación{% endif %}</a>
     <a href="{% url 'inicio' %}" class="{% if u == 'inicio' %}activo{% endif %}">Inicio</a>
-    <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u %}activo{% endif %}">Documentos</a>
+    <div class="seccion">Ventas</div>
+    <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u or 'guia' in u %}activo{% endif %}">Documentos de venta</a>
     <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}">Cobranza</a>
     <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}">Recurrentes</a>
-    <div class="separador"></div>
     <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}">Clientes</a>
     <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}">Productos y servicios</a>
+    <div class="seccion">Compras</div>
+    <span class="pronto">Próximamente</span>
+    <div class="seccion">Informes</div>
     <a href="{% url 'reportes' %}" class="{% if u == 'reportes' %}activo{% endif %}">Reportes</a>
-    <div class="separador"></div>
+    <div class="seccion">Configuración</div>
     <a href="{% url 'conexion_sii' %}" class="{% if u == 'conexion_sii' %}activo{% endif %}">Conexión SII</a>
     <a href="{% url 'sociedades' %}" class="{% if 'sociedad' in u %}activo{% endif %}">Sociedades</a>
     {% if request.user.is_superuser %}<a href="{% url 'usuarios' %}" class="{% if 'usuario' in u %}activo{% endif %}">Usuarios</a>{% endif %}

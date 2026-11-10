@@ -11,6 +11,8 @@
 <div class="app">
   <nav class="menu">
     <a class="marca" href="{% url 'inicio' %}">{% if sociedad_actual.logo %}<img src="{% url 'sociedad_logo' sociedad_actual.pk %}" alt="{{ sociedad_actual.razon_social }}">{% else %}Facturación{% endif %}</a>
+    <button type="button" class="menu-boton" aria-expanded="false" aria-controls="menu-items" onclick="const m=this.closest('.menu').classList.toggle('abierto');this.setAttribute('aria-expanded',m)">Menú</button>
+    <div class="menu-items" id="menu-items">
     <a href="{% url 'inicio' %}" class="{% if u == 'inicio' %}activo{% endif %}">Inicio</a>
     <div class="seccion">Ventas</div>
     <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u or 'guia' in u %}activo{% endif %}">Documentos de venta</a>
@@ -26,6 +28,7 @@
     <a href="{% url 'conexion_sii' %}" class="{% if u == 'conexion_sii' %}activo{% endif %}">Conexión SII</a>
     <a href="{% url 'sociedades' %}" class="{% if 'sociedad' in u %}activo{% endif %}">Sociedades</a>
     {% if request.user.is_superuser %}<a href="{% url 'usuarios' %}" class="{% if 'usuario' in u %}activo{% endif %}">Usuarios</a>{% endif %}
+    </div>
   </nav>
   <div class="contenido">
     <div class="barra">

@@ -114,10 +114,46 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
 .en-linea > div { flex: 1; min-width: 120px; }
 
 .login { max-width: 340px; margin: 12vh auto; }
+.menu-boton { display: none; }
+.totales { max-width: 100%; }
+
+/* --- Teléfonos y pantallas angostas --- */
 @media (max-width: 800px) {
-  .app { grid-template-columns: 1fr; }
-  .menu { display: flex; flex-wrap: wrap; gap: 2px; padding: 10px; }
-  .menu .marca { width: 100%; padding-bottom: 6px; } .menu .separador { display: none; }
-  .menu .seccion { width: 100%; padding-top: 8px; }
-  .dos { grid-template-columns: 1fr; } main { padding: 16px; }
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .menu { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 8px 12px; position: sticky; top: 0; z-index: 5; }
+  .menu a.marca { padding: 0; width: auto; }
+  .menu a.marca img { width: auto; height: 40px; padding: 4px 6px; }
+  .menu-boton { display: block; background: transparent; color: #fff;
+    border-color: rgba(255,255,255,.45); padding: 7px 14px; }
+  .menu-boton:hover { background: rgba(255,255,255,.1); }
+  .menu-items { display: none; width: 100%; padding-bottom: 6px; }
+  .menu.abierto .menu-items { display: block; }
+  .menu .menu-items a { padding: 10px; }
+  .barra { padding: 8px 12px; flex-wrap: wrap; }
+  .barra form:first-child { flex: 1; min-width: 0; }
+  .barra label { display: none; }
+  .barra select { min-width: 0; width: 100%; }
+  main { padding: 14px 12px; }
+  h1 { font-size: 19px; }
+  .dos { grid-template-columns: minmax(0, 1fr); }
+  .panel { padding: 14px; }
+  .tabla-panel { padding: 2px 4px; }
+  input, select, textarea, button, .boton { font-size: 16px; }  /* evita el zoom automático del iPhone */
+
+  /* Detalle de la factura: cada línea pasa a ser una tarjeta. */
+  .lineas thead { display: none; }
+  .lineas, .lineas tbody { display: block; width: 100%; }
+  .lineas tr { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 10px;
+    margin-bottom: 10px; border: 1px solid var(--borde); border-radius: var(--radio); }
+  .lineas td { padding: 0; width: auto !important; text-align: left !important; }
+  .lineas td::before { content: attr(data-rotulo); display: block; font-size: 12px;
+    color: var(--suave); margin-bottom: 3px; }
+  .lineas .c-prod, .lineas .c-texto { grid-column: 1 / -1; }
+  .lineas .c-chk { display: flex; align-items: center; gap: 8px; }
+  .lineas .c-chk::before { margin: 0; order: 2; font-size: 14px; color: var(--texto); }
+  .lineas .c-chk input { width: 20px; height: 20px; }
+  .totales { width: 100%; }
+  .en-linea > div { min-width: 100%; }
+  .acciones .boton, .acciones button { padding: 9px 14px; }
 }

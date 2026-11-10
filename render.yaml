@@ -1,0 +1,31 @@
+# Plano de despliegue en Render (plan gratuito).
+# En Render: New → Blueprint → elegir este repositorio.
+# La base de datos es externa (Neon, plan gratuito): la base gratuita de Render
+# caduca a los 30 días, así que no se usa.
+services:
+  - type: web
+    name: facturacion
+    runtime: python
+    plan: free
+    region: virginia
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      # Cadena de conexión de la base de datos en Neon (se pega al crear el servicio).
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      # Clave con que se cifran certificados y folios. Si se pierde, hay que volver a cargarlos.
+      - key: FACTURACION_CLAVE_MAESTRA
+        generateValue: true
+      # Dominio propio desde el que se entra a la app.
+      - key: FACTURACION_HOSTS
+        value: facturacion.verdevertical.cl
+      # Primer usuario administrador: Render pide estos valores al crear el servicio.
+      - key: FACTURACION_ADMIN_USUARIO
+        sync: false
+      - key: FACTURACION_ADMIN_CLAVE
+        sync: false

@@ -1,0 +1,164 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}{{ doc }}{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <div>
+    <h1>{{ doc }}</h1>
+    <div style="margin-top:6px">
+      <span class="etiqueta e-{{ doc.estado }}">{{ doc.get_estado_display }}</span>
+      {% if doc.estado_cobro %}<span class="etiqueta e-{{ doc.estado_cobro }}">{{ doc.estado_cobro|capfirst }}</span>{% endif %}
+      {% if doc.es_prueba %}<span class="etiqueta e-prueba">Prueba · ambiente de certificación</span>{% endif %}
+      {% if doc.estado_sii %}<span class="etiqueta e-{{ doc.estado_sii }}">SII: {{ doc.get_estado_sii_display }}</span>{% elif doc.es_propio %}<span class="etiqueta">SII: sin enviar</span>{% endif %}
+    </div>
+  </div>
+  <div class="acciones">
+    {% if doc.estado == 'borrador' %}
+      <a class="boton" href="{% url 'documento_editar' doc.pk %}">Editar</a>
+      <form method="post" action="{% url 'documento_eliminar' doc.pk %}" onsubmit="return confirm('¿Eliminar este borrador?')">{% csrf_token %}<button class="peligro">Eliminar</button></form>
+    {% elif doc.es_factura %}
+      <form method="post" action="{% url 'nota_nueva' doc.pk NC %}">{% csrf_token %}<button>Nota de crédito</button></form>
+      <form method="post" action="{% url 'nota_nueva' doc.pk ND %}">{% csrf_token %}<button>Nota de débito</button></form>
+    {% elif doc.es_guia %}
+      <form method="post" action="{% url 'guia_facturar' doc.pk %}">{% csrf_token %}<button>Facturar esta guía</button></form>
+    {% endif %}
+    {% if doc.es_propio %}
+      <a class="boton" href="{% url 'documento_pdf' doc.pk %}" target="_blank">PDF</a>
+      {% if doc.es_factura or doc.es_guia %}<a class="boton" href="{% url 'documento_pdf' doc.pk %}?cedible=1" target="_blank">PDF con cedible</a>{% endif %}
+      <a class="boton" href="{% url 'documento_xml' doc.pk %}">XML</a>
+    {% elif doc.estado == 'emitido' %}
+      <form method="post" action="{% url 'documento_reabrir' doc.pk %}" onsubmit="return confirm('Esto solo corrige el registro en esta app; no anula nada en el SII. ¿Volver a borrador?')">{% csrf_token %}<button>Corregir registro</button></form>
+    {% endif %}
+  </div>
+</div>
+
+{% if doc.estado == 'borrador' %}
+<div class="panel">
+  <h2>Emitir</h2>
+  {% if errores %}
+  <div class="aviso" style="margin-bottom:0">Antes de emitir hay que corregir:<ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% else %}
+    {% if not faltantes %}
+    <p class="suave" style="margin-top:0">La app asigna el folio, timbra y firma el documento con el certificado digital.{% if sociedad_actual.ambiente == 'certificacion' %} La sociedad está en <strong>ambiente de certificación</strong>: el documento será de prueba, sin validez tributaria, y no entra a cobranza.{% endif %}</p>
+    <form method="post" action="{% url 'documento_timbrar' doc.pk %}" onsubmit="return confirm('Se usará un folio y el documento ya no se podrá editar. ¿Timbrar y firmar?')">{% csrf_token %}<button class="primario" type="submit">Timbrar y firmar</button></form>
+    {% else %}
+    <p class="suave" style="margin-top:0">Para que la app timbre y firme este documento falta:</p>
+    <ul class="pasos">{% for f in faltantes %}<li>{{ f }}</li>{% endfor %}</ul>
+    {% endif %}
+    <details{% if faltantes %} open{% endif %}>
+      <summary>Ya lo emití en el portal del SII</summary>
+      <form method="post" action="{% url 'documento_emitir' doc.pk %}" class="en-linea">{% csrf_token %}
+        <div style="max-width:220px"><label for="id_folio"><strong>Folio asignado por el SII</strong></label>{{ emitir_form.folio }}</div>
+        <button type="submit">Registrar como emitida</button>
+      </form>
+    </details>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if doc.es_propio %}
+<div class="panel">
+  <h2>Envío al SII</h2>
+  {% if doc.envio %}
+  <dl class="datos" style="margin-bottom:12px">
+    <dt>Track ID</dt><dd>{{ doc.envio.track_id }}</dd>
+    <dt>Enviado</dt><dd>{{ doc.envio.creado|date:"d/m/Y H:i" }}</dd>
+    <dt>Respuesta</dt><dd>{{ doc.envio.detalle|default:"Aún sin consultar" }}</dd>
+  </dl>
+  <form method="post" action="{% url 'envio_estado' doc.envio.pk %}">{% csrf_token %}<input type="hidden" name="documento" value="{{ doc.pk }}"><button type="submit">Consultar estado en el SII</button></form>
+  {% else %}
+  <p class="suave" style="margin-top:0">Timbrado el {{ doc.timbrado|date:"d/m/Y H:i" }}. Todavía no se ha enviado al SII{% if doc.es_prueba %} (ambiente de certificación){% endif %}.</p>
+  <form method="post" action="{% url 'documento_enviar' doc.pk %}">{% csrf_token %}<button class="primario" type="submit">Enviar al SII</button></form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="dos">
+  <div class="panel">
+    <h2>Cliente</h2>
+    <dl class="datos">
+      <dt>Razón social</dt><dd>{{ doc.cliente.razon_social }}</dd>
+      <dt>RUT</dt><dd>{{ doc.cliente.rut|rut }}</dd>
+      <dt>Giro</dt><dd>{{ doc.cliente.giro|default:"—" }}</dd>
+      <dt>Dirección</dt><dd>{{ doc.cliente.direccion|default:"—" }}{% if doc.cliente.comuna %}, {{ doc.cliente.comuna }}{% endif %}</dd>
+    </dl>
+  </div>
+  <div class="panel">
+    <h2>Documento</h2>
+    <dl class="datos">
+      <dt>Tipo</dt><dd>{{ doc.get_tipo_display }} ({{ doc.tipo }})</dd>
+      <dt>Emisión</dt><dd>{{ doc.fecha_emision|date:"d/m/Y" }}</dd>
+      {% if doc.es_factura %}<dt>Vencimiento</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
+      {% if doc.es_guia %}<dt>Traslado</dt><dd>{{ doc.get_ind_traslado_display|default:"—" }}</dd>
+      {% if doc.direccion_destino %}<dt>Destino</dt><dd>{{ doc.direccion_destino }}{% if doc.comuna_destino %}, {{ doc.comuna_destino }}{% endif %}</dd>{% endif %}
+      {% if doc.patente %}<dt>Patente</dt><dd>{{ doc.patente }}</dd>{% endif %}
+      {% for f in facturas_de_guia %}<dt>Facturada en</dt><dd><a href="{% url 'documento' f.pk %}">{{ f }}</a></dd>{% endfor %}{% endif %}
+      {% if doc.caso_set %}<dt>Set de pruebas</dt><dd>{{ doc.caso_set }}</dd>{% endif %}
+      {% if doc.referencia %}<dt>Referencia</dt><dd><a href="{% url 'documento' doc.referencia.pk %}">{{ doc.referencia }}</a></dd>
+      {% if doc.es_nota %}<dt>Motivo</dt><dd>{{ doc.get_codigo_referencia_display|default:"—" }}{% if doc.razon_referencia %} · {{ doc.razon_referencia }}{% endif %}</dd>{% endif %}{% endif %}
+      {% if doc.recurrente %}<dt>Recurrente</dt><dd>{{ doc.recurrente }} ({{ doc.periodo }})</dd>{% endif %}
+      {% if doc.observaciones %}<dt>Observaciones</dt><dd>{{ doc.observaciones }}</dd>{% endif %}
+    </dl>
+  </div>
+</div>
+
+<div class="panel tabla-panel">
+  <table>
+    <thead><tr><th>Descripción</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Desc.</th><th>IVA</th><th class="num">Monto</th></tr></thead>
+    <tbody>
+    {% for l in lineas %}
+      <tr><td>{{ l.descripcion }}</td><td class="num">{{ l.cantidad|numero }}</td><td class="num">${{ l.precio|numero }}</td><td class="num">{% if l.descuento %}{{ l.descuento|numero }}%{% else %}—{% endif %}</td><td>{% if l.exento %}Exento{% else %}Afecto{% endif %}</td><td class="num">{{ l.monto|clp }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="vacio">Sin líneas de detalle.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <table class="totales" style="margin-bottom:10px">
+    <tr><td>Neto</td><td class="num">{{ doc.neto|clp }}</td></tr>
+    <tr><td>Exento</td><td class="num">{{ doc.exento|clp }}</td></tr>
+    <tr><td>IVA 19%</td><td class="num">{{ doc.iva|clp }}</td></tr>
+    <tr class="total"><td>Total</td><td class="num">{{ doc.total|clp }}</td></tr>
+  </table>
+</div>
+
+{% if doc.es_factura and doc.estado == 'emitido' and not doc.es_prueba %}
+<div class="dos">
+  <div class="panel">
+    <h2>Cobranza</h2>
+    <table class="totales" style="width:100%;margin:0">
+      <tr><td>Total factura</td><td class="num">{{ doc.total|clp }}</td></tr>
+      {% if doc.notas_credito %}<tr><td>Notas de crédito</td><td class="num">−{{ doc.notas_credito|clp }}</td></tr>{% endif %}
+      {% if doc.notas_debito %}<tr><td>Notas de débito</td><td class="num">{{ doc.notas_debito|clp }}</td></tr>{% endif %}
+      <tr><td>Pagado</td><td class="num">−{{ doc.pagado|clp }}</td></tr>
+      <tr class="total"><td>Saldo</td><td class="num">{{ doc.saldo|clp }}</td></tr>
+    </table>
+    {% if notas %}<h2 style="margin-top:16px">Notas asociadas</h2>
+    {% for n in notas %}<div><a href="{% url 'documento' n.pk %}">{{ n }}</a> · {{ n.total|clp }} · <span class="suave">{{ n.get_estado_display }}</span></div>{% endfor %}{% endif %}
+  </div>
+  <div class="panel">
+    <h2>Pagos</h2>
+    {% for p in pagos %}
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0">
+      <span>{{ p.fecha|date:"d/m/Y" }} · {{ p.get_medio_display }}{% if p.nota %} · {{ p.nota }}{% endif %}</span>
+      <span class="num">{{ p.monto|clp }}
+        <form method="post" action="{% url 'pago_eliminar' p.pk %}" style="display:inline" onsubmit="return confirm('¿Eliminar este pago?')">{% csrf_token %}<button class="enlace" title="Eliminar pago">✕</button></form>
+      </span>
+    </div>
+    {% empty %}<p class="suave" style="margin-top:0">Sin pagos registrados.</p>
+    {% endfor %}
+    {% if doc.saldo > 0 %}
+    <form method="post" action="{% url 'pago_nuevo' doc.pk %}" style="margin-top:12px">{% csrf_token %}
+      <div class="en-linea">
+        <div><label>Fecha</label>{{ pago_form.fecha }}</div>
+        <div><label>Monto</label>{{ pago_form.monto }}</div>
+        <div><label>Medio</label>{{ pago_form.medio }}</div>
+      </div>
+      <div class="en-linea" style="margin-top:8px">
+        <div>{{ pago_form.nota }}</div>
+        <button class="primario" type="submit" style="flex:0">Registrar pago</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>{{ titulo }}</h1></div>
+<form method="post">{% csrf_token %}
+  {% if doc.referencia %}<div class="aviso">Referencia: <a href="{% url 'documento' doc.referencia.pk %}">{{ doc.referencia }}</a> · {{ doc.cliente }}</div>{% endif %}
+  <div class="panel">{% include "core/_campos.html" %}</div>
+  <div class="panel">
+    <h2>Detalle</h2>
+    {% if es_recurrente %}<p class="ayuda" style="margin-top:-6px">En la descripción puedes escribir <code>{mes}</code> y <code>{año}</code>; se reemplazan al generar cada factura. Ej.: «Arriendo {mes} {año}».</p>{% endif %}
+    {{ lineas.management_form }}
+    {{ lineas.non_form_errors }}
+    <table class="lineas" id="lineas" data-solo-exento="{% if solo_exento %}1{% else %}0{% endif %}" data-iva="19">
+      <thead><tr><th>Producto o servicio</th><th>Descripción</th><th>Cantidad</th><th>Precio neto</th><th>Desc. %</th><th class="c-chk">Exento</th><th class="c-chk">Quitar</th></tr></thead>
+      <tbody>{% for f in lineas %}{% include "core/_linea.html" %}{% endfor %}</tbody>
+    </table>
+    <template id="linea-vacia">{% include "core/_linea.html" with f=lineas.empty_form %}</template>
+    <button type="button" id="agregar-linea" style="margin-top:8px">Agregar línea</button>
+    <table class="totales">
+      <tr><td>Neto</td><td class="num" id="t-neto"></td></tr>
+      <tr><td>Exento</td><td class="num" id="t-exento"></td></tr>
+      <tr><td>IVA 19%</td><td class="num" id="t-iva"></td></tr>
+      <tr class="total"><td>Total</td><td class="num" id="t-total"></td></tr>
+    </table>
+  </div>
+  <div class="acciones">
+    <button class="primario" type="submit">Guardar{% if not es_recurrente %} borrador{% endif %}</button>
+    <a class="boton" href="{{ volver }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ productos_js|json_script:"productos-js" }}
+<script src="{% static 'core/app.js' %}"></script>
+{% endblock %}

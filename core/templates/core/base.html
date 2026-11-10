@@ -1,0 +1,51 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Facturación{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body>
+{% with u=request.resolver_match.url_name %}
+<div class="app">
+  <nav class="menu">
+    <a class="marca" href="{% url 'inicio' %}">{% if sociedad_actual.logo %}<img src="{% url 'sociedad_logo' sociedad_actual.pk %}" alt="{{ sociedad_actual.razon_social }}">{% else %}Facturación{% endif %}</a>
+    <a href="{% url 'inicio' %}" class="{% if u == 'inicio' %}activo{% endif %}">Inicio</a>
+    <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u %}activo{% endif %}">Documentos</a>
+    <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}">Cobranza</a>
+    <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}">Recurrentes</a>
+    <div class="separador"></div>
+    <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}">Clientes</a>
+    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}">Productos y servicios</a>
+    <a href="{% url 'reportes' %}" class="{% if u == 'reportes' %}activo{% endif %}">Reportes</a>
+    <div class="separador"></div>
+    <a href="{% url 'conexion_sii' %}" class="{% if u == 'conexion_sii' %}activo{% endif %}">Conexión SII</a>
+    <a href="{% url 'sociedades' %}" class="{% if 'sociedad' in u %}activo{% endif %}">Sociedades</a>
+    {% if request.user.is_superuser %}<a href="{% url 'usuarios' %}" class="{% if 'usuario' in u %}activo{% endif %}">Usuarios</a>{% endif %}
+  </nav>
+  <div class="contenido">
+    <div class="barra">
+      <form method="post" action="{% url 'cambiar_sociedad' %}">{% csrf_token %}
+        <label for="sociedad">Sociedad</label>
+        <select id="sociedad" name="sociedad" onchange="this.form.submit()">
+          {% for s in sociedades %}
+          <option value="{{ s.pk }}" {% if s.pk == sociedad_actual.pk %}selected{% endif %}>{{ s.razon_social }} · {{ s.rut_formateado }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+        <a href="{% url 'password_change' %}" title="Cambiar mi clave">{{ request.user.username }}</a>
+        <button type="submit">Salir</button>
+      </form>
+    </div>
+    <main>
+      {% if messages %}<ul class="mensajes">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+      {% block contenido %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% endwith %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,32 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Facturación recurrente{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Facturación recurrente</h1>
+  <div class="acciones">
+    {% if pendientes %}<form method="post" action="{% url 'recurrentes_generar' %}">{% csrf_token %}<button class="primario">Generar {{ pendientes }} borrador{{ pendientes|pluralize:"es" }} de {{ mes }}</button></form>{% endif %}
+    <a class="boton" href="{% url 'recurrente_nueva' %}">Nueva recurrente</a>
+  </div>
+</div>
+<div class="panel tabla-panel">
+  {% if items %}
+  <table>
+    <thead><tr><th>Nombre</th><th>Cliente</th><th>Tipo</th><th>Día</th><th>Vigencia</th><th class="num">Monto mensual</th><th>{{ mes|capfirst }} {{ anio }}</th></tr></thead>
+    <tbody>
+    {% for r, doc, aplica in items %}
+      <tr>
+        <td><a href="{% url 'recurrente_editar' r.pk %}">{{ r.nombre }}</a></td>
+        <td>{{ r.cliente }}</td>
+        <td>{{ r.get_tipo_display }}</td>
+        <td>{{ r.dia_emision }}</td>
+        <td>{{ r.fecha_inicio|date:"m/Y" }} – {% if r.fecha_fin %}{{ r.fecha_fin|date:"m/Y" }}{% else %}indefinida{% endif %}</td>
+        <td class="num">{{ r.monto_estimado|clp }}</td>
+        <td>{% if doc %}<a href="{% url 'documento' doc.pk %}">{{ doc }}</a>{% elif aplica %}<span class="etiqueta e-parcial">Pendiente</span>{% else %}<span class="etiqueta">{% if r.activa %}Fuera de vigencia{% else %}Inactiva{% endif %}</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">Aún no hay facturación recurrente. Úsala para arriendos u otros cobros mensuales fijos.</div>{% endif %}
+</div>
+{% endblock %}

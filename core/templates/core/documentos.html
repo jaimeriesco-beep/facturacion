@@ -1,0 +1,39 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Documentos{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Documentos</h1>
+  <div class="acciones">
+    <a class="boton primario" href="{% url 'documento_nuevo' 33 %}">Nueva factura</a>
+    <a class="boton" href="{% url 'documento_nuevo' 34 %}">Nueva factura exenta</a>
+    <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>
+  </div>
+</div>
+<form class="filtros" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Cliente, RUT o folio">
+  <select name="tipo"><option value="">Todos los tipos</option>{% for codigo, nombre in tipos %}<option value="{{ codigo }}" {% if tipo == codigo|stringformat:"s" %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
+  <select name="estado"><option value="">Todos los estados</option>{% for codigo, nombre in estados %}<option value="{{ codigo }}" {% if estado == codigo %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
+  <button type="submit">Filtrar</button>
+</form>
+<div class="panel tabla-panel">
+  {% if documentos %}
+  <table>
+    <thead><tr><th>Documento</th><th>Cliente</th><th>Emisión</th><th>Vencimiento</th><th>Estado</th><th class="num">Total</th><th class="num">Saldo</th></tr></thead>
+    <tbody>
+    {% for d in documentos %}
+      <tr>
+        <td><a href="{% url 'documento' d.pk %}">{{ d }}</a>{% if d.es_prueba %} <span class="etiqueta e-prueba">Prueba</span>{% endif %}</td>
+        <td>{{ d.cliente }}</td>
+        <td>{{ d.fecha_emision|date:"d/m/Y" }}</td>
+        <td>{{ d.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
+        <td>{% if d.estado_cobro %}<span class="etiqueta e-{{ d.estado_cobro }}">{{ d.estado_cobro|capfirst }}</span>{% else %}<span class="etiqueta e-{{ d.estado }}">{{ d.get_estado_display }}</span>{% endif %}</td>
+        <td class="num">{{ d.total|clp }}</td>
+        <td class="num">{% if d.estado_cobro %}{{ d.saldo|clp }}{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">No hay documentos con esos filtros.</div>{% endif %}
+</div>
+{% endblock %}

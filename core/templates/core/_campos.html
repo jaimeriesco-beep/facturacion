@@ -1,0 +1,11 @@
+{{ form.non_field_errors }}
+<div class="campos">
+  {% for campo in form.visible_fields %}
+  <div class="campo{% if campo.widget_type == 'checkbox' %} casilla{% endif %}">
+    {% if campo.widget_type == 'checkbox' %}{{ campo }}{{ campo.label_tag }}{% else %}{{ campo.label_tag }}{{ campo }}{% endif %}
+    {% if campo.help_text %}<div class="ayuda">{{ campo.help_text }}</div>{% endif %}
+    {{ campo.errors }}
+  </div>
+  {% endfor %}
+</div>
+{% for oculto in form.hidden_fields %}{{ oculto }}{% endfor %}

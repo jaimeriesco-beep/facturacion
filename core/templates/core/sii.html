@@ -1,0 +1,92 @@
+{% extends "core/base.html" %}
+{% block titulo %}Conexión SII{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <div>
+    <h1>Conexión SII</h1>
+    <div style="margin-top:6px"><span class="etiqueta {% if sociedad_actual.ambiente == 'certificacion' %}e-prueba{% else %}e-aceptado{% endif %}">{{ sociedad_actual.get_ambiente_display }}</span></div>
+  </div>
+  <a class="boton" href="{% url 'sociedad_editar' sociedad_actual.pk %}">Datos de la sociedad</a>
+</div>
+
+{% if faltan_datos %}
+<div class="aviso">Para emitir faltan estos datos de la sociedad: {{ faltan_datos|join:", " }}. <a href="{% url 'sociedad_editar' sociedad_actual.pk %}">Completar</a></div>
+{% endif %}
+
+<div class="dos">
+  <div class="panel">
+    <h2>Certificado digital</h2>
+    {% if certificado %}
+    <dl class="datos" style="margin-bottom:14px">
+      <dt>Titular</dt><dd>{{ certificado.titular }}</dd>
+      <dt>RUT</dt><dd>{{ certificado.rut_titular }}</dd>
+      <dt>Vence</dt><dd>{{ certificado.vence|date:"d/m/Y" }} {% if not certificado.vigente %}<span class="etiqueta e-rechazado">Vencido</span>{% endif %}</dd>
+    </dl>
+    {% else %}
+    <p class="suave" style="margin-top:0">Aún no hay certificado. Se guarda cifrado en este computador y no se envía a ningún servicio externo.</p>
+    {% endif %}
+    <details{% if not certificado or cert_form.errors %} open{% endif %}>
+      <summary>{% if certificado %}Reemplazar certificado{% else %}Cargar certificado{% endif %}</summary>
+      <form method="post" enctype="multipart/form-data">{% csrf_token %}
+        <input type="hidden" name="accion" value="certificado">
+        {% include "core/_campos.html" with form=cert_form %}
+        <button class="primario" type="submit" style="margin-top:12px">Guardar certificado</button>
+      </form>
+    </details>
+  </div>
+
+  <div class="panel">
+    <h2>Folios autorizados (CAF)</h2>
+    {% if cafs %}
+    <table style="margin-bottom:10px">
+      <thead><tr><th>Documento</th><th>Rango</th><th class="num">Disponibles</th><th>Autorizado</th></tr></thead>
+      <tbody>{% for c in cafs %}
+        <tr><td>{{ c.get_tipo_display }}</td><td>{{ c.desde }} – {{ c.hasta }}</td><td class="num">{{ c.disponibles }}</td><td>{{ c.fecha_autorizacion|date:"d/m/Y" }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    {% else %}
+    <p class="suave" style="margin-top:0">Aún no hay folios. Los archivos CAF se descargan desde el sitio del SII, por tipo de documento, para el ambiente en que está la sociedad.</p>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" class="en-linea">{% csrf_token %}
+      <input type="hidden" name="accion" value="caf">
+      <div><input type="file" name="archivos" accept=".xml" multiple required></div>
+      <button type="submit" style="flex:0;white-space:nowrap">Cargar CAF</button>
+    </form>
+  </div>
+</div>
+
+<div class="panel tabla-panel">
+  <div class="titulo" style="padding:12px 10px 0;margin-bottom:8px">
+    <h2 style="margin:0">Envíos al SII</h2>
+    {% if por_enviar %}<form method="post" action="{% url 'enviar_pendientes' %}">{% csrf_token %}<button class="primario">Enviar {{ por_enviar }} documento{{ por_enviar|pluralize }} pendiente{{ por_enviar|pluralize }} en un sobre</button></form>{% endif %}
+  </div>
+  {% if envios %}
+  <table>
+    <thead><tr><th>Fecha</th><th>Track ID</th><th>Documentos</th><th>Estado</th><th>Respuesta del SII</th><th></th></tr></thead>
+    <tbody>{% for e in envios %}
+      <tr>
+        <td>{{ e.creado|date:"d/m/Y H:i" }}</td><td>{{ e.track_id }}</td>
+        <td>{% for d in e.documentos.all %}<a href="{% url 'documento' d.pk %}">{{ d }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td><span class="etiqueta e-{{ e.estado }}">{{ e.estado|capfirst }}</span></td>
+        <td>{{ e.detalle|default:"—" }}</td>
+        <td><form method="post" action="{% url 'envio_estado' e.pk %}">{% csrf_token %}<button type="submit">Consultar</button></form></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}<div class="vacio">Todavía no se ha enviado nada al SII.</div>{% endif %}
+</div>
+
+{% if sociedad_actual.ambiente == 'certificacion' %}
+<div class="panel">
+  <h2>Camino a la certificación</h2>
+  <ol class="pasos">
+    <li>El representante legal postula la sociedad al ambiente de certificación en sii.cl (Factura electrónica → Sistema de facturación propio o de mercado).</li>
+    <li>Completa aquí los datos de la sociedad, con la fecha en que el SII aceptó la postulación como fecha de resolución y 0 como número.</li>
+    <li>Carga el certificado digital y los CAF descargados del ambiente de certificación (maullin.sii.cl).</li>
+    <li>Descarga el set de pruebas del SII y crea cada caso como documento, anotando el número de caso en «Caso del set de pruebas».</li>
+    <li>Timbra y firma los documentos, y envíalos todos juntos en un sobre desde esta página.</li>
+    <li>Consulta el estado del envío e informa el avance en el sitio del SII. Después siguen simulación, intercambio y muestras impresas.</li>
+  </ol>
+</div>
+{% endif %}
+{% endblock %}

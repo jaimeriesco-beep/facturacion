@@ -1,0 +1,21 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ingresar · Facturación</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body>
+<div class="login panel">
+  <h1 style="margin-bottom:16px">Facturación</h1>
+  {% if form.errors %}<ul class="mensajes"><li class="error">Usuario o clave incorrectos.</li></ul>{% endif %}
+  <form method="post">{% csrf_token %}
+    <div class="campo" style="margin-bottom:12px"><label for="id_username">Usuario</label>{{ form.username }}</div>
+    <div class="campo" style="margin-bottom:16px"><label for="id_password">Clave</label>{{ form.password }}</div>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="primario" type="submit" style="width:100%">Ingresar</button>
+  </form>
+</div>
+</body>
+</html>

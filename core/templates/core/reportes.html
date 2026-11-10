@@ -1,0 +1,21 @@
+{% extends "core/base.html" %}
+{% block titulo %}Reportes{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Reportes</h1></div>
+<div class="dos">
+  <form method="get" class="panel">
+    <h2>Documentos emitidos</h2>
+    <p class="suave" style="margin-top:0">Facturas, notas de crédito y de débito emitidas en el período, con neto, IVA, total, pagado y saldo. Las notas de crédito van en negativo.</p>
+    <div class="en-linea">
+      <div><label for="desde">Desde</label><input type="date" id="desde" name="desde" value="{{ desde|date:'Y-m-d' }}" required></div>
+      <div><label for="hasta">Hasta</label><input type="date" id="hasta" name="hasta" value="{{ hasta|date:'Y-m-d' }}" required></div>
+      <button class="primario" type="submit" style="flex:0">Descargar Excel</button>
+    </div>
+  </form>
+  <div class="panel">
+    <h2>Cobranza</h2>
+    <p class="suave" style="margin-top:0">Facturas pendientes de pago a la fecha, con días de atraso, tramo de antigüedad y datos de contacto del cliente.</p>
+    <a class="boton primario" href="{% url 'cobranza' %}?formato=excel">Descargar Excel</a>
+  </div>
+</div>
+{% endblock %}

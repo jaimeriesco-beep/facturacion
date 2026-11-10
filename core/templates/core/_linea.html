@@ -1,0 +1,9 @@
+<tr>
+  <td class="c-prod">{% for oculto in f.hidden_fields %}{{ oculto }}{% endfor %}{{ f.producto }}</td>
+  <td>{{ f.descripcion }}{{ f.descripcion.errors }}</td>
+  <td class="c-cant">{{ f.cantidad }}{{ f.cantidad.errors }}</td>
+  <td class="c-precio">{{ f.precio }}{{ f.precio.errors }}</td>
+  <td class="c-desc">{{ f.descuento }}{{ f.descuento.errors }}</td>
+  <td class="c-chk">{{ f.exento }}</td>
+  <td class="c-chk">{{ f.DELETE }}</td>
+</tr>

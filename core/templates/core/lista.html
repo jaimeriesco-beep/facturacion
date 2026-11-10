@@ -1,0 +1,17 @@
+{% extends "core/base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>{{ titulo }}</h1><div class="acciones">{% for url, texto in extra %}<a class="boton" href="{{ url }}">{{ texto }}</a>{% endfor %}<a class="boton primario" href="{{ nuevo }}">{{ texto_nuevo }}</a></div></div>
+<div class="panel tabla-panel">
+  {% if filas %}
+  <table>
+    <thead><tr>{% for c in columnas %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for url, celdas in filas %}
+      <tr>{% for celda in celdas %}<td>{% if forloop.first %}<a href="{{ url }}">{{ celda }}</a>{% else %}{{ celda }}{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">{{ vacio }}</div>{% endif %}
+</div>
+{% endblock %}

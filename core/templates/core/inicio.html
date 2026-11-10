@@ -1,0 +1,41 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Inicio · {{ sociedad_actual }}{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>{{ sociedad_actual.razon_social }}</h1>
+  <div class="acciones">
+    <a class="boton primario" href="{% url 'documento_nuevo' 33 %}">Nueva factura</a>
+    <a class="boton" href="{% url 'documento_nuevo' 34 %}">Nueva factura exenta</a>
+    <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>
+  </div>
+</div>
+<div class="tarjetas">
+  <div class="tarjeta"><div class="rotulo">Por cobrar</div><div class="valor">{{ por_cobrar|clp }}</div></div>
+  <div class="tarjeta{% if vencido %} alerta{% endif %}"><div class="rotulo">Vencido</div><div class="valor">{{ vencido|clp }}</div><div class="nota">{{ n_vencidas }} factura{{ n_vencidas|pluralize }}</div></div>
+  <div class="tarjeta"><div class="rotulo">Facturado en {{ mes }}</div><div class="valor">{{ facturado|clp }}</div><div class="nota">IVA incluido, neto de notas de crédito</div></div>
+  <div class="tarjeta"><div class="rotulo">Borradores</div><div class="valor">{{ borradores }}</div><div class="nota"><a href="{% url 'documentos' %}?estado=borrador">Ver borradores</a></div></div>
+</div>
+{% if recurrentes_pendientes %}
+<div class="aviso">Hay {{ recurrentes_pendientes }} factura{{ recurrentes_pendientes|pluralize }} recurrente{{ recurrentes_pendientes|pluralize }} de {{ mes }} sin generar. <a href="{% url 'recurrentes' %}">Ir a recurrentes</a></div>
+{% endif %}
+<div class="panel tabla-panel">
+  <h2 style="padding:12px 10px 0">Próximos vencimientos</h2>
+  {% if proximas %}
+  <table>
+    <thead><tr><th>Documento</th><th>Cliente</th><th>Vence</th><th>Estado</th><th class="num">Saldo</th></tr></thead>
+    <tbody>
+    {% for d in proximas %}
+      <tr>
+        <td><a href="{% url 'documento' d.pk %}">{{ d }}</a></td>
+        <td>{{ d.cliente }}</td>
+        <td>{{ d.fecha_vencimiento|date:"d/m/Y" }}</td>
+        <td><span class="etiqueta e-{{ d.estado_cobro }}">{% if d.estado_cobro == 'vencida' %}Vencida hace {{ d.dias_vencido }} día{{ d.dias_vencido|pluralize }}{% else %}{{ d.estado_cobro|capfirst }}{% endif %}</span></td>
+        <td class="num">{{ d.saldo|clp }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">No hay facturas pendientes de cobro.</div>{% endif %}
+</div>
+{% endblock %}

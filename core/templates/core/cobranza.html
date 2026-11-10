@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Cobranza{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Cobranza</h1>
+  <a class="boton" href="?formato=excel{% if cliente %}&cliente={{ cliente }}{% endif %}">Descargar Excel</a>
+</div>
+<div class="tarjetas">
+  <div class="tarjeta"><div class="rotulo">Total por cobrar</div><div class="valor">{{ total|clp }}</div></div>
+  {% for nombre, monto in tramos %}
+  <div class="tarjeta{% if not forloop.first and monto %} alerta{% endif %}"><div class="rotulo">{{ nombre }}</div><div class="valor">{{ monto|clp }}</div></div>
+  {% endfor %}
+</div>
+<form class="filtros" method="get">
+  <select name="cliente" onchange="this.form.submit()">
+    <option value="">Todos los clientes</option>
+    {% for c in clientes %}<option value="{{ c.pk }}" {% if cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.razon_social }}</option>{% endfor %}
+  </select>
+</form>
+<div class="panel tabla-panel">
+  {% if pendientes %}
+  <table>
+    <thead><tr><th>Cliente</th><th>Documento</th><th>Emisión</th><th>Vencimiento</th><th>Estado</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th></tr></thead>
+    <tbody>
+    {% for d in pendientes %}
+      <tr>
+        <td>{{ d.cliente }}</td>
+        <td><a href="{% url 'documento' d.pk %}">{{ d }}</a></td>
+        <td>{{ d.fecha_emision|date:"d/m/Y" }}</td>
+        <td>{{ d.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
+        <td><span class="etiqueta e-{{ d.estado_cobro }}">{% if d.estado_cobro == 'vencida' %}Vencida hace {{ d.dias_vencido }} día{{ d.dias_vencido|pluralize }}{% else %}{{ d.estado_cobro|capfirst }}{% endif %}</span></td>
+        <td class="num">{{ d.total|clp }}</td>
+        <td class="num">{{ d.pagado|clp }}</td>
+        <td class="num"><strong>{{ d.saldo|clp }}</strong></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">No hay facturas pendientes de cobro.</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+Django>=5.2,<5.3
+openpyxl>=3.1,<4
+lxml>=5.2
+cryptography>=42
+requests>=2.31
+reportlab>=4.0
+pdf417gen>=0.8
+Pillow>=10
+keyring>=24
+pyotp>=2.9
+segno>=1.6
+whitenoise>=6.6
+gunicorn>=22
+dj-database-url>=2.1
+psycopg[binary]>=3.2

@@ -1,0 +1,31 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verificación en dos pasos · Facturación</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body>
+<div class="login panel" style="max-width:400px">
+  <h1 style="margin-bottom:12px">Verificación en dos pasos</h1>
+  {% if messages %}<ul class="mensajes">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}
+  {% if not confirmado %}
+  <ol class="pasos" style="margin-bottom:12px">
+    <li>Instala en tu teléfono una app de autenticación (Google Authenticator, Microsoft Authenticator, 1Password u otra).</li>
+    <li>Escanea este código con la app.</li>
+    <li>Escribe el código de 6 dígitos que te muestre.</li>
+  </ol>
+  <div style="text-align:center"><img src="{{ qr }}" alt="Código QR para la app de autenticación" width="200" height="200"></div>
+  <p class="ayuda" style="text-align:center;word-break:break-all">Si no puedes escanear, ingresa esta clave en la app: <strong>{{ secreto }}</strong></p>
+  {% else %}
+  <p class="suave" style="margin-top:0">Escribe el código de 6 dígitos de tu app de autenticación.</p>
+  {% endif %}
+  <form method="post">{% csrf_token %}
+    <div class="campo" style="margin-bottom:14px"><label for="codigo">Código</label><input id="codigo" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="7" autofocus required></div>
+    <button class="primario" type="submit" style="width:100%">Verificar</button>
+  </form>
+  <form method="post" action="{% url 'logout' %}" style="margin-top:10px;text-align:center">{% csrf_token %}<button class="enlace" style="color:var(--suave)">Salir</button></form>
+</div>
+</body>
+</html>

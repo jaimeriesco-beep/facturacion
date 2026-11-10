@@ -1,5 +1,8 @@
 """Utilidades: RUT, redondeo y nombres de meses."""
+import csv
 import re
+from functools import lru_cache
+from pathlib import Path
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
@@ -8,6 +11,14 @@ MESES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ]
+
+
+@lru_cache(maxsize=1)
+def actividades_sii():
+    """Listado de actividades económicas del SII: lista de (código, descripción)."""
+    ruta = Path(__file__).parent / "recursos" / "actividades_sii.csv"
+    with ruta.open(encoding="utf-8", newline="") as archivo:
+        return [(f["codigo"], f["descripcion"]) for f in csv.DictReader(archivo, delimiter=";")]
 
 
 def redondear(valor):

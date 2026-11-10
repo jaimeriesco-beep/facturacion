@@ -11,6 +11,11 @@ from .models import (Cliente, Documento, Linea, Pago, Producto, Recurrente,
 from .utils import sin_ceros
 
 
+def etiqueta_cliente(cliente):
+    """Texto del cliente en los selectores: con RUT, para poder buscarlo por él."""
+    return f"{cliente} — {cliente.rut_formateado}" if cliente.rut else f"{cliente} — sin RUT"
+
+
 class Fecha(forms.DateInput):
     input_type = "date"
 
@@ -20,6 +25,14 @@ class Fecha(forms.DateInput):
 
 class FormBase(forms.ModelForm):
     """Valida también las restricciones que incluyen la sociedad (que no va en el formulario)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "giro" in self.fields:
+            # El giro sugiere las actividades económicas del SII (se puede escribir otro texto).
+            self.fields["giro"].widget.attrs.update(
+                {"list": "actividades-sii", "autocomplete": "off",
+                 "placeholder": "Escribe para buscar en el listado del SII"})
 
     def _post_clean(self):
         super()._post_clean()
@@ -106,6 +119,7 @@ class DocumentoForm(FormBase):
         else:
             del self.fields["codigo_referencia"], self.fields["razon_referencia"]
             self.fields["cliente"].queryset = sociedad.clientes.filter(activo=True)
+            self.fields["cliente"].label_from_instance = etiqueta_cliente
             if "fecha_vencimiento" in self.fields:
                 self.fields["fecha_vencimiento"].help_text = (
                     "Si se deja vacío, se calcula con el plazo de pago del cliente.")
@@ -159,6 +173,7 @@ class RecurrenteForm(FormBase):
     def __init__(self, *args, sociedad, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["cliente"].queryset = sociedad.clientes.filter(activo=True)
+        self.fields["cliente"].label_from_instance = etiqueta_cliente
 
 
 class PagoForm(forms.ModelForm):

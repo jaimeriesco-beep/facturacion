@@ -386,6 +386,31 @@ class ClientesYUsuariosTests(Base):
         self.client.post(reverse("documento_emitir", args=[doc.pk]), {"folio": 99})
         self.assertEqual(Documento.objects.get(pk=doc.pk).estado, Documento.BORRADOR)
         self.assertEqual(self.soc.clientes.get(razon_social="Tropera").nombre_fantasia, "Tropera")
+        r = self.client.get(reverse("cliente_nuevo"))
+        self.assertContains(r, 'list="actividades-sii"')
+        self.assertContains(r, 'data-codigo="561000">561000</option>')
+        self.assertContains(r, "Actividades de restaurantes y de servicio móvil de comidas")
+        r = self.client.post(reverse("cliente_nuevo"), {
+            "razon_social": "Restaurante Largo", "dias_pago": 30, "activo": "on",
+            "giro": "Venta al por menor de alimentos en comercios especializados (almacenes pequeños y minimarket)"})
+        self.assertRedirects(r, reverse("clientes"))
+        self.assertNotContains(self.client.get(reverse("producto_nuevo")), "actividades-sii")
+        # En la factura, el selector de cliente muestra el RUT para poder buscar por él.
+        r = self.client.get(reverse("documento_nuevo", args=[FACTURA]))
+        ruta = reverse("documento_nuevo", args=[FACTURA])
+        self.assertContains(r, f'href="/clientes/nuevo/?volver={ruta}"')
+        r = self.client.post(f"/clientes/nuevo/?volver={ruta}",
+                             {"razon_social": "Creado Desde Factura", "dias_pago": 30, "activo": "on"})
+        nuevo = self.soc.clientes.get(razon_social="Creado Desde Factura")
+        self.assertRedirects(r, f"{ruta}?cliente={nuevo.pk}")
+        self.assertContains(self.client.get(f"{ruta}?cliente={nuevo.pk}"),
+                            f'<option value="{nuevo.pk}" selected>')
+        r = self.client.post("/clientes/nuevo/?volver=https://malo.example/x",
+                             {"razon_social": "Otro Más", "dias_pago": 30, "activo": "on"})
+        self.assertRedirects(r, reverse("clientes"))
+        r = self.client.get(reverse("documento_nuevo", args=[FACTURA]))
+        self.assertContains(r, "Cliente Uno — 76.192.083-9")
+        self.assertContains(r, "Tropera — sin RUT")
 
     def test_administrador_crea_usuario(self):
         self.assertEqual(self.client.get(reverse("usuarios")).status_code, 302)  # no es admin

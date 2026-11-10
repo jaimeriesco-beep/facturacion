@@ -9,4 +9,18 @@
     <a class="boton" href="{{ volver }}">Cancelar</a>
   </div>
 </form>
+{% if actividades %}
+<datalist id="actividades-sii">{% for codigo, descripcion in actividades %}<option value="{{ descripcion }}" data-codigo="{{ codigo }}">{{ codigo }}</option>{% endfor %}</datalist>
+<script>
+// Al elegir una actividad del listado en la sociedad, completa su código si está vacío.
+(function () {
+  const giro = document.getElementById("id_giro"), codigo = document.getElementById("id_acteco");
+  if (!giro || !codigo) return;
+  giro.addEventListener("change", () => {
+    const opcion = [...document.querySelectorAll("#actividades-sii option")].find(o => o.value === giro.value);
+    if (opcion && !codigo.value) codigo.value = opcion.dataset.codigo;
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

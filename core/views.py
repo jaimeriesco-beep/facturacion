@@ -1,6 +1,7 @@
 import calendar
 from datetime import date, timedelta
 from functools import wraps
+from urllib.parse import quote
 from io import BytesIO, StringIO
 
 from django.contrib import messages
@@ -15,6 +16,7 @@ from django.db.models import Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
@@ -29,7 +31,7 @@ from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm,
 from .models import (FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO, NOTA_DEBITO, NOTAS,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, hoy)
-from .utils import MESES, formatear_clp, formatear_rut, sin_ceros
+from .utils import MESES, actividades_sii, formatear_clp, formatear_rut, sin_ceros
 
 
 # --- Infraestructura ----------------------------------------------------------
@@ -70,14 +72,15 @@ def excel(nombre, encabezados, filas):
     return respuesta
 
 
-def formulario_simple(request, clase, instancia, titulo, volver):
+def formulario_simple(request, clase, instancia, titulo, volver, al_guardar=None, cancelar=None):
     form = clase(request.POST or None, request.FILES or None, instance=instancia)
     if request.method == "POST" and form.is_valid():
-        form.save()
+        objeto = form.save()
         messages.success(request, "Guardado.")
-        return redirect(volver)
-    return render(request, "core/form.html",
-                  {"form": form, "titulo": titulo, "volver": reverse(volver)})
+        return redirect(al_guardar(objeto) if al_guardar else volver)
+    return render(request, "core/form.html", {
+        "form": form, "titulo": titulo, "volver": cancelar or reverse(volver),
+        "actividades": actividades_sii() if "giro" in form.fields else None})
 
 
 def lista(request, titulo, columnas, filas, nuevo, texto_nuevo, vacio, extra=()):
@@ -291,8 +294,15 @@ def usuario_form(request, pk=None):
 def cliente_form(request, pk=None):
     instancia = (get_object_or_404(Cliente, pk=pk, sociedad=request.sociedad) if pk
                  else Cliente(sociedad=request.sociedad))
-    return formulario_simple(request, ClienteForm, instancia,
-                             "Editar cliente" if pk else "Nuevo cliente", "clientes")
+    # Si se llegó desde una factura en preparación, al guardar se vuelve a ella con el
+    # cliente ya elegido.
+    origen = request.GET.get("volver", "")
+    if not (origen.startswith("/documentos/") and url_has_allowed_host_and_scheme(origen, None)):
+        origen = ""
+    return formulario_simple(
+        request, ClienteForm, instancia, "Editar cliente" if pk else "Nuevo cliente", "clientes",
+        al_guardar=(lambda c: f"{origen}?cliente={c.pk}") if origen else None,
+        cancelar=origen or None)
 
 
 @con_sociedad
@@ -360,6 +370,9 @@ def _editar_con_lineas(request, form, lineas, al_guardar, contexto):
 
 
 def _form_documento(request, doc, titulo, volver):
+    elegido = request.GET.get("cliente", "")
+    if elegido.isdigit() and request.sociedad.clientes.filter(pk=elegido, activo=True).exists():
+        doc.cliente_id = int(elegido)  # viene de crear un cliente desde esta misma pantalla
     form = DocumentoForm(request.POST or None, instance=doc, sociedad=request.sociedad)
     lineas = LineasFormSet(request.POST or None, instance=doc,
                            form_kwargs={"sociedad": request.sociedad})
@@ -372,6 +385,8 @@ def _form_documento(request, doc, titulo, volver):
 
     return _editar_con_lineas(request, form, lineas, al_guardar, {
         "titulo": titulo, "volver": volver, "doc": doc,
+        "nuevo_cliente": (reverse("cliente_nuevo") + "?volver=" + quote(request.path)
+                          if "cliente" in form.fields else ""),
         "solo_exento": doc.tipo == FACTURA_EXENTA})
 
 

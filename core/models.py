@@ -48,7 +48,7 @@ class ConRut(models.Model):
 
 class Sociedad(ConRut):
     razon_social = models.CharField("Razón social", max_length=100)
-    giro = models.CharField(max_length=80, blank=True)
+    giro = models.CharField(max_length=100, blank=True)
     direccion = models.CharField("Dirección", max_length=70, blank=True)
     comuna = models.CharField(max_length=20, blank=True)
     ciudad = models.CharField(max_length=20, blank=True)
@@ -92,7 +92,10 @@ class Cliente(ConRut):
         help_text="Nombre con que se conoce al cliente o al local. No va en la factura.")
     razon_social = models.CharField(
         "Razón social", max_length=100, help_text="Nombre legal de la empresa; va en la factura.")
-    giro = models.CharField(max_length=40, blank=True)
+    giro = models.CharField(
+        max_length=100, blank=True,
+        help_text="Elige una actividad del listado del SII o escribe el giro. "
+                  "En la factura van los primeros 40 caracteres.")
     direccion = models.CharField("Dirección", max_length=70, blank=True)
     comuna = models.CharField(max_length=20, blank=True)
     ciudad = models.CharField(max_length=20, blank=True)

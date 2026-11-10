@@ -87,7 +87,11 @@ class Cliente(ConRut):
     sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="clientes")
     rut = models.CharField("RUT", max_length=12, blank=True,
                            help_text="Se puede completar después; es obligatorio para emitirle.")
-    razon_social = models.CharField("Razón social", max_length=100)
+    nombre_fantasia = models.CharField(
+        "Nombre de fantasía", max_length=100, blank=True,
+        help_text="Nombre con que se conoce al cliente o al local. No va en la factura.")
+    razon_social = models.CharField(
+        "Razón social", max_length=100, help_text="Nombre legal de la empresa; va en la factura.")
     giro = models.CharField(max_length=40, blank=True)
     direccion = models.CharField("Dirección", max_length=70, blank=True)
     comuna = models.CharField(max_length=20, blank=True)
@@ -101,13 +105,12 @@ class Cliente(ConRut):
     activo = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["razon_social"]
-        constraints = [models.UniqueConstraint(
-            fields=["sociedad", "rut"], condition=~Q(rut=""),
-            name="cliente_rut_unico_por_sociedad",
-            violation_error_message="Ya existe un cliente con ese RUT en esta sociedad.")]
+        # Varios locales pueden compartir RUT y razón social (misma empresa, otra dirección).
+        ordering = ["nombre_fantasia", "razon_social"]
 
     def __str__(self):
+        if self.nombre_fantasia and self.nombre_fantasia.lower() != self.razon_social.lower():
+            return f"{self.nombre_fantasia} · {self.razon_social}"
         return self.razon_social
 
 

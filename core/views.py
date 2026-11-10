@@ -148,11 +148,12 @@ def sociedad_form(request, pk=None):
 @con_sociedad
 def clientes(request):
     filas = [(reverse("cliente_editar", args=[c.pk]),
-              [c.razon_social, c.rut_formateado or "Falta RUT", c.giro, c.email,
+              [c.nombre_fantasia or c.razon_social, c.razon_social,
+               c.rut_formateado or "Falta RUT", c.giro or "Falta giro", c.comuna,
                f"{c.dias_pago} días", si_no(c.activo)])
              for c in request.sociedad.clientes.all()]
     return lista(request, "Clientes",
-                 ["Razón social", "RUT", "Giro", "Correo", "Plazo de pago", "Activo"],
+                 ["Nombre", "Razón social", "RUT", "Giro", "Comuna", "Plazo de pago", "Activo"],
                  filas, "cliente_nuevo", "Nuevo cliente", "Aún no hay clientes.",
                  extra=[(reverse("clientes_importar"), "Importar desde Excel")])
 
@@ -191,9 +192,10 @@ def clientes_importar(request):
         except ValueError as e:
             messages.error(request, str(e))
         else:
-            existentes = {c.lower() for c in
-                          request.sociedad.clientes.values_list("razon_social", flat=True)}
-            nuevos = [Cliente(sociedad=request.sociedad, razon_social=n[:100])
+            existentes = {n.lower() for par in request.sociedad.clientes.values_list(
+                "razon_social", "nombre_fantasia") for n in par if n}
+            nuevos = [Cliente(sociedad=request.sociedad, razon_social=n[:100],
+                              nombre_fantasia=n[:100])
                       for n in nombres if n.lower() not in existentes]
             Cliente.objects.bulk_create(nuevos)
             messages.success(
@@ -330,7 +332,8 @@ def documentos(request):
     if estado:
         qs = qs.filter(estado=estado)
     if q:
-        filtro = Q(cliente__razon_social__icontains=q) | Q(cliente__rut__icontains=q)
+        filtro = (Q(cliente__razon_social__icontains=q) | Q(cliente__rut__icontains=q)
+                  | Q(cliente__nombre_fantasia__icontains=q))
         if q.isdigit():
             filtro |= Q(folio=int(q))
         qs = qs.filter(filtro)
@@ -681,7 +684,7 @@ def cobranza(request):
     qs = (request.sociedad.documentos.por_cobrar().select_related("cliente")
           .order_by("fecha_vencimiento", "id"))
     pendientes = list(qs)
-    con_deuda = sorted({d.cliente for d in pendientes}, key=lambda c: c.razon_social)
+    con_deuda = sorted({d.cliente for d in pendientes}, key=lambda c: str(c).lower())
     cliente = request.GET.get("cliente", "")
     if cliente.isdigit():
         pendientes = [d for d in pendientes if d.cliente_id == int(cliente)]

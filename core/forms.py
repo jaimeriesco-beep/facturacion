@@ -68,8 +68,8 @@ class SociedadForm(FormBase):
 class ClienteForm(FormBase):
     class Meta:
         model = Cliente
-        fields = ["rut", "razon_social", "giro", "direccion", "comuna", "ciudad",
-                  "email", "contacto", "telefono", "dias_pago", "activo"]
+        fields = ["nombre_fantasia", "razon_social", "rut", "giro", "direccion", "comuna",
+                  "ciudad", "email", "contacto", "telefono", "dias_pago", "activo"]
 
 
 class ProductoForm(FormBase):

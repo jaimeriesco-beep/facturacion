@@ -15,7 +15,7 @@
 <form class="filtros" method="get">
   <select name="cliente" onchange="this.form.submit()">
     <option value="">Todos los clientes</option>
-    {% for c in clientes %}<option value="{{ c.pk }}" {% if cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.razon_social }}</option>{% endfor %}
+    {% for c in clientes %}<option value="{{ c.pk }}" {% if cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c }}</option>{% endfor %}
   </select>
 </form>
 <div class="panel tabla-panel">

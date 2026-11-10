@@ -1,8 +1,10 @@
+import csv
 import os
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 
 from pathlib import Path
 
@@ -11,6 +13,7 @@ from core.models import Cliente, DosPasos, Sociedad
 RECURSOS = Path(__file__).resolve().parents[2] / "recursos"
 LOGO_PILOTO = RECURSOS / "logo_verde_vertical.png"
 CLIENTES_PILOTO = RECURSOS / "clientes_verde_vertical.txt"
+DATOS_CLIENTES_PILOTO = RECURSOS / "clientes_verde_vertical_datos.csv"
 
 
 class Command(BaseCommand):
@@ -30,7 +33,7 @@ class Command(BaseCommand):
         if piloto and CLIENTES_PILOTO.exists() and not piloto.clientes.exists():
             nombres = [n.strip() for n in CLIENTES_PILOTO.read_text(encoding="utf-8").splitlines()]
             Cliente.objects.bulk_create(
-                Cliente(sociedad=piloto, razon_social=n) for n in nombres if n)
+                Cliente(sociedad=piloto, razon_social=n, nombre_fantasia=n) for n in nombres if n)
             self.stdout.write(f"Clientes de Verde Vertical cargados: {piloto.clientes.count()}. "
                               "Falta completar RUT, giro y dirección.")
         if piloto:
@@ -43,6 +46,27 @@ class Command(BaseCommand):
                 quitados, _ = sobran.delete()
                 if quitados:
                     self.stdout.write(f"Clientes depurados: {quitados}.")
+        if piloto and DATOS_CLIENTES_PILOTO.exists():
+            # Datos legales entregados el 10-11-2026 (Excel «Clientes Alberto»). Solo se
+            # aplican a clientes que aún no tienen RUT, para no pisar ediciones posteriores.
+            completados = 0
+            with DATOS_CLIENTES_PILOTO.open(encoding="utf-8", newline="") as archivo:
+                for fila in csv.DictReader(archivo, delimiter=";"):
+                    cliente = piloto.clientes.filter(
+                        Q(nombre_fantasia__iexact=fila["anterior"])
+                        | Q(nombre_fantasia__iexact=fila["fantasia"])
+                        | Q(razon_social__iexact=fila["anterior"])).first()
+                    if cliente is None:
+                        cliente = Cliente(sociedad=piloto)
+                    elif cliente.rut:
+                        continue
+                    cliente.nombre_fantasia = fila["fantasia"]
+                    for campo in ("razon_social", "rut", "ciudad", "comuna", "direccion"):
+                        setattr(cliente, campo, fila[campo])
+                    cliente.save()
+                    completados += 1
+            if completados:
+                self.stdout.write(f"Clientes completados con razón social, RUT y dirección: {completados}.")
         Usuario = get_user_model()
         usuario = os.environ.get("FACTURACION_ADMIN_USUARIO", "").strip()
         clave = os.environ.get("FACTURACION_ADMIN_CLAVE", "")

@@ -130,9 +130,12 @@ class FlujoTests(Base):
         self.assertEqual(Documento.objects.get(pk=doc.pk).estado, Documento.EMITIDO)
 
     def test_cliente_rut_duplicado_y_aislamiento_entre_sociedades(self):
-        datos = {"rut": "76.192.083-9", "razon_social": "Repetido", "dias_pago": 30, "activo": "on"}
-        r = self.client.post(reverse("cliente_nuevo"), datos)
-        self.assertContains(r, "Ya existe un cliente con ese RUT")
+        datos = {"rut": "76.192.083-9", "razon_social": "Cliente Uno", "nombre_fantasia": "Otro local",
+                 "dias_pago": 30, "activo": "on"}
+        self.assertRedirects(self.client.post(reverse("cliente_nuevo"), datos), reverse("clientes"))
+        self.assertEqual(str(self.soc.clientes.get(nombre_fantasia="Otro local")), "Otro local · Cliente Uno")
+        r = self.client.post(reverse("cliente_nuevo"), {**datos, "rut": "76.192.083-8"})
+        self.assertContains(r, "dígito verificador")
         otra = Sociedad.objects.create(rut="76086428-5", razon_social="Otra")
         ajeno = Documento.objects.create(
             sociedad=otra, tipo=FACTURA,
@@ -382,11 +385,7 @@ class ClientesYUsuariosTests(Base):
         Linea.objects.create(documento=doc, descripcion="Albahaca", cantidad=1, precio=1000); doc.recalcular()
         self.client.post(reverse("documento_emitir", args=[doc.pk]), {"folio": 99})
         self.assertEqual(Documento.objects.get(pk=doc.pk).estado, Documento.BORRADOR)
-        # Al completar el RUT se valida y no se puede repetir.
-        cliente = self.soc.clientes.get(razon_social="Tropera")
-        r = self.client.post(reverse("cliente_editar", args=[cliente.pk]),
-                             {"rut": "76.192.083-9", "razon_social": "Tropera", "dias_pago": 30, "activo": "on"})
-        self.assertContains(r, "Ya existe un cliente con ese RUT")
+        self.assertEqual(self.soc.clientes.get(razon_social="Tropera").nombre_fantasia, "Tropera")
 
     def test_administrador_crea_usuario(self):
         self.assertEqual(self.client.get(reverse("usuarios")).status_code, 302)  # no es admin

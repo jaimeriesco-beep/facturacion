@@ -7,8 +7,8 @@
       <div class="suave">{{ doc.sociedad.giro }}</div>
       <div class="suave">{{ doc.sociedad.direccion }}{% if doc.sociedad.comuna %}, {{ doc.sociedad.comuna }}{% endif %}</div>
     </div>
-    <div class="hoja-recuadro">
-      <div>R.U.T.: {{ doc.sociedad.rut|rut }}</div>
+    <div class="hoja-recuadro{% if doc.es_cotizacion %} neutro{% endif %}">
+      {% if not doc.es_cotizacion %}<div>R.U.T.: {{ doc.sociedad.rut|rut }}</div>{% endif %}
       <div>{{ doc.get_tipo_display|upper }}</div>
       <div>{% if doc.folio %}N° {{ doc.folio }}{% else %}BORRADOR{% endif %}</div>
     </div>
@@ -26,6 +26,7 @@
     <dt>Dirección</dt><dd>{{ doc.cliente.direccion|default:"—" }}{% if doc.cliente.comuna %}, {{ doc.cliente.comuna }}{% endif %}</dd>
     <dt>Emisión</dt><dd>{{ doc.fecha_emision|date:"d/m/Y" }}</dd>
     {% if doc.es_factura %}<dt>Vencimiento</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
+    {% if doc.es_cotizacion %}<dt>Válida hasta</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
     {% if doc.es_guia %}<dt>Traslado</dt><dd>{{ doc.get_ind_traslado_display|default:"—" }}</dd>{% endif %}
     {% if doc.referencia %}<dt>Referencia</dt><dd>{{ doc.referencia }}{% if doc.razon_referencia %} · {{ doc.razon_referencia }}{% endif %}</dd>{% endif %}
     {% if doc.observaciones %}<dt>Observaciones</dt><dd>{{ doc.observaciones }}</dd>{% endif %}

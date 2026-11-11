@@ -142,7 +142,7 @@ class DocumentoForm(FormBase):
                 del self.fields[campo]
         en_certificacion = (sociedad.ambiente == Sociedad.CERTIFICACION
                             and hasattr(sociedad, "certificado"))
-        if not en_certificacion:
+        if not en_certificacion or self.instance.es_cotizacion:
             del self.fields["caso_set"]
         if self.instance.es_nota:
             # El cliente de una nota es siempre el del documento de referencia.
@@ -153,7 +153,10 @@ class DocumentoForm(FormBase):
             del self.fields["codigo_referencia"], self.fields["razon_referencia"]
             self.fields["cliente"].queryset = sociedad.clientes.filter(activo=True)
             self.fields["cliente"].label_from_instance = etiqueta_cliente
-            if "fecha_vencimiento" in self.fields:
+            if self.instance.es_cotizacion:
+                self.fields["fecha_vencimiento"].label = "Válida hasta"
+                self.fields["fecha_vencimiento"].help_text = "Si se deja vacío, 30 días."
+            elif "fecha_vencimiento" in self.fields:
                 self.fields["fecha_vencimiento"].help_text = (
                     "Si se deja vacío, se calcula con el plazo de pago del cliente.")
 
@@ -163,7 +166,8 @@ class DocumentoForm(FormBase):
             emision, cliente = datos.get("fecha_emision"), datos.get("cliente")
             vence = datos.get("fecha_vencimiento")
             if emision and cliente and not vence:
-                datos["fecha_vencimiento"] = emision + timedelta(days=cliente.dias_pago)
+                dias = 30 if self.instance.es_cotizacion else cliente.dias_pago
+                datos["fecha_vencimiento"] = emision + timedelta(days=dias)
             elif emision and vence and vence < emision:
                 self.add_error("fecha_vencimiento", "No puede ser anterior a la emisión.")
         return datos

@@ -502,3 +502,49 @@ class IngresoTests(Base):
         cache.clear()
         r = self.client.post(reverse("login"), {"username": "jaime", "password": "clave-segura-123"})
         self.assertRedirects(r, reverse("inicio"))
+
+
+class CotizacionTests(Base):
+    def test_cotizacion_con_numeracion_propia_y_fuera_de_lo_tributario(self):
+        from .models import COTIZACION
+        self.factura(folio=1)                                   # factura N° 1 ya existe
+        sin_rut = Cliente.objects.create(sociedad=self.soc, razon_social="Prospecto", nombre_fantasia="Prospecto")
+        r = self.client.post(reverse("documento_nuevo", args=[COTIZACION]), {
+            "cliente": sin_rut.pk, "fecha_emision": "2026-11-10", "fecha_vencimiento": "",
+            "lineas-TOTAL_FORMS": 1, "lineas-INITIAL_FORMS": 0,
+            "lineas-0-descripcion": "Albahaca semanal", "lineas-0-cantidad": 10,
+            "lineas-0-precio": 5000, "lineas-0-descuento": 0})
+        cot = Documento.objects.get(tipo=COTIZACION)
+        self.assertRedirects(r, reverse("documento", args=[cot.pk]))
+        self.assertEqual((cot.total, cot.fecha_vencimiento, cot.folio), (59500, date(2026, 12, 10), None))
+        self.assertNotContains(self.client.get(reverse("documento", args=[cot.pk])), "portal del SII")
+        self.client.post(reverse("cotizacion_emitir", args=[cot.pk]))
+        cot.refresh_from_db()
+        self.assertEqual((str(cot), cot.estado), ("Cotización N° 1", Documento.EMITIDO))  # folio propio
+        otra = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=COTIZACION)
+        Linea.objects.create(documento=otra, descripcion="x", cantidad=1, precio=100); otra.recalcular()
+        self.client.post(reverse("cotizacion_emitir", args=[otra.pk]))
+        self.assertEqual(Documento.objects.get(pk=otra.pk).folio, 2)
+        # Corregir conserva el número.
+        self.client.post(reverse("documento_reabrir", args=[cot.pk]))
+        self.assertEqual(Documento.objects.get(pk=cot.pk).estado, Documento.BORRADOR)
+        self.client.post(reverse("cotizacion_emitir", args=[cot.pk]))
+        self.assertEqual(Documento.objects.get(pk=cot.pk).folio, 1)
+        # Listados separados; nada tributario ni de cobranza.
+        self.assertContains(self.client.get(reverse("cotizaciones")), "Cotización N° 1")
+        self.assertNotContains(self.client.get(reverse("documentos")), "Cotización N°")
+        self.assertNotContains(self.client.get(reverse("cobranza")), "Prospecto")
+        self.client.post(reverse("documento_timbrar", args=[cot.pk]))
+        self.client.post(reverse("documento_emitir", args=[cot.pk]), {"folio": 500})
+        self.assertEqual(Documento.objects.get(pk=cot.pk).folio, 1)
+        r = self.client.get(reverse("reportes"), {"desde": "2026-01-01", "hasta": "2026-12-31"})
+        self.assertEqual(len(list(load_workbook(BytesIO(r.content)).active.values)), 2)  # solo la factura
+        pdf = self.client.get(reverse("documento_pdf", args=[cot.pk]))
+        self.assertTrue(pdf.content.startswith(b"%PDF"))
+        self.assertContains(self.client.get(reverse("documento_vista", args=[cot.pk])), "COTIZACIÓN")
+        # Convertir en factura: borrador con el mismo detalle; exige RUT recién al emitir.
+        self.client.post(reverse("cotizacion_facturar", args=[cot.pk]))
+        factura = Documento.objects.filter(tipo=FACTURA, estado=Documento.BORRADOR).get()
+        self.assertEqual((factura.total, factura.cliente), (59500, sin_rut))
+        self.assertIn("Según cotización N° 1", factura.observaciones)
+        self.assertIn("no tiene RUT", " ".join(factura.errores_para_emitir()))

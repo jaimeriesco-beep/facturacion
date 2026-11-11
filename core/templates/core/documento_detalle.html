@@ -21,18 +21,32 @@
       <form method="post" action="{% url 'nota_nueva' doc.pk ND %}">{% csrf_token %}<button>Nota de débito</button></form>
     {% elif doc.es_guia %}
       <form method="post" action="{% url 'guia_facturar' doc.pk %}">{% csrf_token %}<button>Facturar esta guía</button></form>
+    {% elif doc.es_cotizacion %}
+      <form method="post" action="{% url 'cotizacion_facturar' doc.pk %}">{% csrf_token %}<button class="primario">Convertir en factura</button></form>
+      <a class="boton" href="{% url 'documento_pdf' doc.pk %}" target="_blank">PDF</a>
+      <form method="post" action="{% url 'documento_reabrir' doc.pk %}">{% csrf_token %}<button>Corregir</button></form>
     {% endif %}
     {% if doc.es_propio %}
       <a class="boton" href="{% url 'documento_pdf' doc.pk %}" target="_blank">PDF</a>
       {% if doc.es_factura or doc.es_guia %}<a class="boton" href="{% url 'documento_pdf' doc.pk %}?cedible=1" target="_blank">PDF con cedible</a>{% endif %}
       <a class="boton" href="{% url 'documento_xml' doc.pk %}">XML</a>
-    {% elif doc.estado == 'emitido' %}
+    {% elif doc.estado == 'emitido' and not doc.es_cotizacion %}
       <form method="post" action="{% url 'documento_reabrir' doc.pk %}" onsubmit="return confirm('Esto solo corrige el registro en esta app; no anula nada en el SII. ¿Volver a borrador?')">{% csrf_token %}<button>Corregir registro</button></form>
     {% endif %}
   </div>
 </div>
 
-{% if doc.estado == 'borrador' %}
+{% if doc.estado == 'borrador' and doc.es_cotizacion %}
+<div class="panel">
+  <h2>Emitir cotización</h2>
+  {% if errores %}
+  <div class="aviso" style="margin-bottom:0">Antes de emitir hay que corregir:<ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% else %}
+  <p class="suave" style="margin-top:0">{% if doc.folio %}Conserva su número {{ doc.folio }}.{% else %}Se le asigna el siguiente número de cotización.{% endif %} Es un documento interno: no se informa al SII.</p>
+  <form method="post" action="{% url 'cotizacion_emitir' doc.pk %}">{% csrf_token %}<button class="primario" type="submit">Emitir cotización</button></form>
+  {% endif %}
+</div>
+{% elif doc.estado == 'borrador' %}
 <div class="panel">
   <h2>Emitir</h2>
   {% if errores %}
@@ -86,9 +100,10 @@
   <div class="panel">
     <h2>Documento</h2>
     <dl class="datos">
-      <dt>Tipo</dt><dd>{{ doc.get_tipo_display }} ({{ doc.tipo }})</dd>
+      <dt>Tipo</dt><dd>{{ doc.get_tipo_display }}{% if not doc.es_cotizacion %} ({{ doc.tipo }}){% endif %}</dd>
       <dt>Emisión</dt><dd>{{ doc.fecha_emision|date:"d/m/Y" }}</dd>
       {% if doc.es_factura %}<dt>Vencimiento</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
+      {% if doc.es_cotizacion %}<dt>Válida hasta</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
       {% if doc.es_guia %}<dt>Traslado</dt><dd>{{ doc.get_ind_traslado_display|default:"—" }}</dd>
       {% if doc.direccion_destino %}<dt>Destino</dt><dd>{{ doc.direccion_destino }}{% if doc.comuna_destino %}, {{ doc.comuna_destino }}{% endif %}</dd>{% endif %}
       {% if doc.patente %}<dt>Patente</dt><dd>{{ doc.patente }}</dd>{% endif %}

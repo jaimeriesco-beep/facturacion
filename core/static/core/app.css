@@ -128,6 +128,7 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
 .hoja-recuadro { border: 2px solid #c41a1a; color: #c41a1a; font-weight: 700; text-align: center;
   padding: 10px 16px; align-self: flex-start; line-height: 1.6; }
 .hoja-datos { margin: 6px 0 14px; }
+.hoja-recuadro.neutro { border-color: var(--verde-oscuro); color: var(--verde-oscuro); }
 .menu-boton { display: none; }
 .totales { max-width: 100%; }
 

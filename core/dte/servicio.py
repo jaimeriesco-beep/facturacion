@@ -73,6 +73,8 @@ def faltantes(doc):
 @transaction.atomic
 def emitir(doc):
     """Asigna folio del CAF, genera el XML timbrado y firmado, y deja el documento emitido."""
+    if doc.es_cotizacion:
+        raise ErrorDTE("Las cotizaciones no se timbran ni se envían al SII.")
     errores = doc.errores_para_emitir() + faltantes(doc)
     if doc.estado != Documento.BORRADOR:
         errores = ["El documento ya está emitido."]

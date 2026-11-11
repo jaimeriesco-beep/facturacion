@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.decorators import login_required
 from django.core.management import call_command
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Max, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -28,7 +28,8 @@ from .dte.secretos import ErrorSecreto, cifrar, descifrar
 from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm,
                     ImportarClientesForm, LineasFormSet, PagoForm, ProductoForm, RecurrenteForm,
                     RecurrenteLineasFormSet, SociedadForm, UsuarioForm)
-from .models import (FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO, NOTA_DEBITO, NOTAS,
+from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
+                     NOTA_DEBITO, NOTAS,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, hoy)
 from .utils import MESES, actividades_sii, formatear_clp, formatear_rut, sin_ceros
@@ -101,7 +102,7 @@ def inicio(request):
     vencidas = por_cobrar.filter(fecha_vencimiento__lt=hoy())
     inicio_mes = hoy().replace(day=1)
     del_mes = docs.filter(estado=Documento.EMITIDO, fecha_emision__gte=inicio_mes,
-                          es_prueba=False).exclude(tipo=GUIA)
+                          es_prueba=False).exclude(tipo__in=(GUIA, COTIZACION))
 
     def suma(qs, campo="total"):
         return qs.aggregate(s=Sum(campo))["s"] or 0
@@ -118,7 +119,7 @@ def inicio(request):
         "n_vencidas": vencidas.count(),
         "facturado": facturado,
         "mes": MESES[hoy().month - 1],
-        "borradores": docs.filter(estado=Documento.BORRADOR).count(),
+        "borradores": docs.ventas().filter(estado=Documento.BORRADOR).count(),
         "recurrentes_pendientes": recurrentes_pendientes,
         "proximas": por_cobrar.select_related("cliente").order_by("fecha_vencimiento")[:8],
     })
@@ -334,8 +335,9 @@ def _documento(request, pk):
 
 
 @con_sociedad
-def documentos(request):
-    qs = request.sociedad.documentos.select_related("cliente").con_saldo()
+def documentos(request, cotizaciones=False):
+    base = request.sociedad.documentos
+    qs = (base.cotizaciones() if cotizaciones else base.ventas()).select_related("cliente").con_saldo()
     tipo, estado, q = (request.GET.get(k, "").strip() for k in ("tipo", "estado", "q"))
     if tipo.isdigit():
         qs = qs.filter(tipo=int(tipo))
@@ -348,8 +350,9 @@ def documentos(request):
             filtro |= Q(folio=int(q))
         qs = qs.filter(filtro)
     return render(request, "core/documentos.html", {
-        "documentos": qs[:500], "tipos": TIPOS, "estados": Documento.ESTADOS[:2],
-        "tipo": tipo, "estado": estado, "q": q})
+        "documentos": qs[:500], "tipos": [t for t in TIPOS if t[0] != COTIZACION],
+        "estados": Documento.ESTADOS[:2], "tipo": tipo, "estado": estado, "q": q,
+        "cotizaciones": cotizaciones, "COTIZACION": COTIZACION})
 
 
 def _editar_con_lineas(request, form, lineas, al_guardar, contexto):
@@ -392,7 +395,7 @@ def _form_documento(request, doc, titulo, volver):
 
 @con_sociedad
 def documento_nuevo(request, tipo):
-    if tipo not in FACTURAS + (GUIA,):
+    if tipo not in FACTURAS + (GUIA, COTIZACION):
         return redirect("documentos")
     if not request.sociedad.clientes.filter(activo=True).exists():
         messages.info(request, "Primero crea un cliente para poder facturarle.")
@@ -400,7 +403,7 @@ def documento_nuevo(request, tipo):
     doc = Documento(sociedad=request.sociedad, tipo=tipo,
                     ind_traslado=1 if tipo == GUIA else None)
     return _form_documento(request, doc, f"Nueva {TIPOS_CORTOS[tipo].lower()}",
-                           reverse("documentos"))
+                           reverse("cotizaciones" if tipo == COTIZACION else "documentos"))
 
 
 @con_sociedad
@@ -420,7 +423,8 @@ def documento_detalle(request, pk):
         "doc": doc, "lineas": doc.lineas.all(), "pagos": doc.pagos.all(),
         "notas": doc.notas.filter(tipo__in=NOTAS),
         "errores": doc.errores_para_emitir() if doc.estado == Documento.BORRADOR else [],
-        "faltantes": servicio.faltantes(doc) if doc.estado == Documento.BORRADOR else [],
+        "faltantes": (servicio.faltantes(doc)
+                      if doc.estado == Documento.BORRADOR and not doc.es_cotizacion else []),
         "facturas_de_guia": doc.notas.filter(tipo__in=FACTURAS) if doc.es_guia else [],
         "emitir_form": EmitirForm(),
         "pago_form": PagoForm(documento=doc, initial={"monto": max(doc.saldo, 0)}),
@@ -431,6 +435,8 @@ def documento_detalle(request, pk):
 @con_sociedad
 def documento_emitir(request, pk):
     doc = _documento(request, pk)
+    if doc.es_cotizacion:
+        return redirect("documento", pk=pk)
     form = EmitirForm(request.POST)
     errores = doc.errores_para_emitir()
     if doc.estado != Documento.BORRADOR:
@@ -460,7 +466,12 @@ def documento_emitir(request, pk):
 def documento_reabrir(request, pk):
     """Corrige un registro mal ingresado. No anula nada ante el SII."""
     doc = _documento(request, pk)
-    if doc.es_propio:
+    if doc.es_cotizacion:
+        if doc.estado == Documento.EMITIDO:  # se corrige y conserva su número
+            doc.estado = Documento.BORRADOR
+            doc.save(update_fields=["estado"])
+            messages.success(request, "La cotización quedó abierta para corregirla.")
+    elif doc.es_propio:
         messages.error(request, "Este documento fue timbrado y firmado: su folio ya está usado. "
                                 "Para dejarlo sin efecto, emite una nota de crédito.")
     elif doc.pagos.exists() or doc.notas.exists():
@@ -479,9 +490,10 @@ def documento_eliminar(request, pk):
     if doc.estado != Documento.BORRADOR:
         messages.error(request, "Solo se pueden eliminar los borradores.")
         return redirect("documento", pk=pk)
+    destino = "cotizaciones" if doc.es_cotizacion else "documentos"
     doc.delete()
     messages.success(request, "Borrador eliminado.")
-    return redirect("documentos")
+    return redirect(destino)
 
 
 @require_POST
@@ -527,6 +539,56 @@ def guia_facturar(request, pk):
                 cantidad=l.cantidad, precio=l.precio, descuento=l.descuento, exento=l.exento)
         factura.recalcular()
     messages.info(request, "Borrador de factura creado a partir de la guía.")
+    return redirect("documento_editar", pk=factura.pk)
+
+
+# --- Cotizaciones (documento interno, con numeración propia) --------------------
+@require_POST
+@con_sociedad
+def cotizacion_emitir(request, pk):
+    """Deja la cotización lista para enviar al cliente y le asigna su número correlativo."""
+    doc = _documento(request, pk)
+    errores = doc.errores_para_emitir()
+    if not doc.es_cotizacion or doc.estado != Documento.BORRADOR:
+        errores = ["Solo se emiten cotizaciones en borrador."]
+    if errores:
+        for e in errores:
+            messages.error(request, e)
+        return redirect("documento", pk=pk)
+    with transaction.atomic():
+        if not doc.folio:
+            ultimo = (Sociedad.objects.select_for_update().get(pk=doc.sociedad_id)
+                      .documentos.cotizaciones().aggregate(m=Max("folio"))["m"] or 0)
+            doc.folio = ultimo + 1
+        doc.estado = Documento.EMITIDO
+        if not doc.fecha_vencimiento:
+            doc.fecha_vencimiento = doc.fecha_emision + timedelta(days=30)
+        doc.save()
+    messages.success(request, f"{doc} emitida. Ya puedes descargar el PDF para tu cliente.")
+    return redirect("documento", pk=pk)
+
+
+@require_POST
+@con_sociedad
+def cotizacion_facturar(request, pk):
+    """Crea el borrador de factura a partir de una cotización emitida."""
+    cotizacion = _documento(request, pk)
+    if not cotizacion.es_cotizacion or cotizacion.estado != Documento.EMITIDO:
+        messages.error(request, "Solo se facturan cotizaciones emitidas.")
+        return redirect("documento", pk=pk)
+    todo_exento = all(l.exento for l in cotizacion.lineas.all())
+    with transaction.atomic():
+        factura = Documento.objects.create(
+            sociedad=request.sociedad, cliente=cotizacion.cliente,
+            tipo=FACTURA_EXENTA if todo_exento else FACTURA,
+            fecha_vencimiento=hoy() + timedelta(days=cotizacion.cliente.dias_pago),
+            observaciones=f"Según cotización N° {cotizacion.folio}. {cotizacion.observaciones}".strip()[:300])
+        for l in cotizacion.lineas.all():
+            Linea.objects.create(
+                documento=factura, producto=l.producto, descripcion=l.descripcion,
+                cantidad=l.cantidad, precio=l.precio, descuento=l.descuento, exento=l.exento)
+        factura.recalcular()
+    messages.info(request, "Borrador de factura creado a partir de la cotización.")
     return redirect("documento_editar", pk=factura.pk)
 
 
@@ -778,7 +840,7 @@ def reportes(request):
         desde = hoy().replace(day=1)
         hasta = desde.replace(day=calendar.monthrange(desde.year, desde.month)[1])
         return render(request, "core/reportes.html", {"desde": desde, "hasta": hasta})
-    docs = (request.sociedad.documentos.filter(
+    docs = (request.sociedad.documentos.ventas().filter(
         estado=Documento.EMITIDO, es_prueba=False, fecha_emision__range=(desde, hasta))
         .select_related("cliente", "referencia").con_saldo().order_by("fecha_emision", "tipo", "folio"))
     filas = []

@@ -1,25 +1,26 @@
 {% extends "core/base.html" %}
 {% load formato %}
-{% block titulo %}Documentos de venta{% endblock %}
+{% block titulo %}{% if cotizaciones %}Cotizaciones{% else %}Documentos de venta{% endif %}{% endblock %}
 {% block contenido %}
 <div class="titulo">
-  <h1>Documentos de venta</h1>
+  <h1>{% if cotizaciones %}Cotizaciones{% else %}Documentos de venta{% endif %}</h1>
   <div class="acciones">
+    {% if cotizaciones %}<a class="boton primario" href="{% url 'documento_nuevo' COTIZACION %}">Nueva cotización</a>{% else %}
     <a class="boton primario" href="{% url 'documento_nuevo' 33 %}">Nueva factura</a>
     <a class="boton" href="{% url 'documento_nuevo' 34 %}">Nueva factura exenta</a>
-    <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>
+    <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>{% endif %}
   </div>
 </div>
 <form class="filtros" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Cliente, RUT o folio">
-  <select name="tipo"><option value="">Todos los tipos</option>{% for codigo, nombre in tipos %}<option value="{{ codigo }}" {% if tipo == codigo|stringformat:"s" %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
+  {% if not cotizaciones %}<select name="tipo"><option value="">Todos los tipos</option>{% for codigo, nombre in tipos %}<option value="{{ codigo }}" {% if tipo == codigo|stringformat:"s" %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>{% endif %}
   <select name="estado"><option value="">Todos los estados</option>{% for codigo, nombre in estados %}<option value="{{ codigo }}" {% if estado == codigo %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
   <button type="submit">Filtrar</button>
 </form>
 <div class="panel tabla-panel">
   {% if documentos %}
   <table>
-    <thead><tr><th>Documento</th><th>Cliente</th><th>Emisión</th><th>Vencimiento</th><th>Estado</th><th class="num">Total</th><th class="num">Saldo</th><th></th></tr></thead>
+    <thead><tr><th>Documento</th><th>Cliente</th><th>Emisión</th><th>{% if cotizaciones %}Válida hasta{% else %}Vencimiento{% endif %}</th><th>Estado</th><th class="num">Total</th><th class="num">Saldo</th><th></th></tr></thead>
     <tbody>
     {% for d in documentos %}
       <tr>
@@ -38,7 +39,7 @@
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<div class="vacio">No hay documentos con esos filtros.</div>{% endif %}
+  {% else %}<div class="vacio">{% if cotizaciones %}Aún no hay cotizaciones.{% else %}No hay documentos con esos filtros.{% endif %}</div>{% endif %}
 </div>
 <dialog id="vista" class="ventana">
   <div class="ventana-barra"><strong id="vista-titulo"></strong><button type="button" id="vista-cerrar" aria-label="Cerrar">Cerrar ✕</button></div>

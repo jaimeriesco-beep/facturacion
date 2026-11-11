@@ -12,16 +12,18 @@ from django.utils import timezone
 from .utils import MESES, formatear_rut, normalizar_rut, redondear
 
 FACTURA, FACTURA_EXENTA, GUIA, NOTA_DEBITO, NOTA_CREDITO = 33, 34, 52, 56, 61
+COTIZACION = 1  # documento interno, no tributario: no existe para el SII
 TIPOS = [
     (FACTURA, "Factura electrónica"),
     (FACTURA_EXENTA, "Factura exenta electrónica"),
     (NOTA_CREDITO, "Nota de crédito electrónica"),
     (NOTA_DEBITO, "Nota de débito electrónica"),
     (GUIA, "Guía de despacho electrónica"),
+    (COTIZACION, "Cotización"),
 ]
 TIPOS_CORTOS = {FACTURA: "Factura", FACTURA_EXENTA: "Factura exenta",
                 NOTA_CREDITO: "Nota de crédito", NOTA_DEBITO: "Nota de débito",
-                GUIA: "Guía de despacho"}
+                GUIA: "Guía de despacho", COTIZACION: "Cotización"}
 FACTURAS = (FACTURA, FACTURA_EXENTA)
 NOTAS = (NOTA_CREDITO, NOTA_DEBITO)
 
@@ -150,6 +152,13 @@ class DocumentoQuerySet(models.QuerySet):
             nd_a=suma(notas.filter(tipo=NOTA_DEBITO), "referencia", "total"),
         ).annotate(saldo_a=F("total") + F("nd_a") - F("nc_a") - F("pagado_a"))
 
+    def ventas(self):
+        """Documentos tributarios (todo menos las cotizaciones)."""
+        return self.exclude(tipo=COTIZACION)
+
+    def cotizaciones(self):
+        return self.filter(tipo=COTIZACION)
+
     def por_cobrar(self):
         return (self.filter(tipo__in=FACTURAS, estado=Documento.EMITIDO, es_prueba=False)
                 .con_saldo().filter(saldo_a__gt=0))
@@ -254,6 +263,10 @@ class Documento(models.Model):
         return self.tipo == GUIA
 
     @property
+    def es_cotizacion(self):
+        return self.tipo == COTIZACION
+
+    @property
     def es_propio(self):
         """Timbrado y firmado por esta app (no registrado desde el portal del SII)."""
         return bool(self.xml_firmado)
@@ -273,7 +286,7 @@ class Documento(models.Model):
 
     def errores_para_emitir(self):
         errores = []
-        if not self.cliente.rut:
+        if not self.cliente.rut and not self.es_cotizacion:
             errores.append("El cliente no tiene RUT: complétalo en Clientes.")
         lineas = list(self.lineas.all())
         if not lineas:

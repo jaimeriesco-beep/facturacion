@@ -15,7 +15,8 @@
     <div class="menu-items" id="menu-items">
     <a href="{% url 'inicio' %}" class="{% if u == 'inicio' %}activo{% endif %}">Inicio</a>
     <div class="seccion">Ventas</div>
-    <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u or 'guia' in u %}activo{% endif %}">Documentos de venta</a>
+    <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u or 'guia' in u %}{% if not doc.es_cotizacion %}activo{% endif %}{% endif %}">Documentos de venta</a>
+    <a href="{% url 'cotizaciones' %}" class="{% if 'cotizacion' in u or doc.es_cotizacion %}activo{% endif %}">Cotizaciones</a>
     <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}">Cobranza</a>
     <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}">Recurrentes</a>
     <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}">Clientes</a>

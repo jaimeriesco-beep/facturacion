@@ -1,4 +1,5 @@
 import calendar
+import re
 from datetime import date, timedelta
 from functools import wraps
 from urllib.parse import quote
@@ -735,27 +736,50 @@ def marketing_vista(request):
             gracias_enviado__gte=timezone.now().replace(day=1, hour=0, minute=0)).count()})
 
 
-def _correo_cotizacion_inicial(doc, usuario):
-    contacto = doc.cliente.contacto("comercial")
+def _rol_destinatario(doc):
+    """Facturas y notas van al contacto de facturación; cotizaciones y guías al comercial."""
+    return "facturacion" if (doc.es_factura or doc.es_nota) else "comercial"
+
+
+def _correo_inicial(doc, usuario):
+    contacto = doc.cliente.contacto(_rol_destinatario(doc))
     saludo = contacto["nombre"] or doc.cliente.nombre_fantasia or doc.cliente.razon_social
-    vigencia = f", válida hasta el {doc.fecha_vencimiento:%d/%m/%Y}" if doc.fecha_vencimiento else ""
+    nombre = f"{doc.tipo_corto.lower()} N° {doc.folio}"
+    if doc.es_cotizacion:
+        vigencia = f", válida hasta el {doc.fecha_vencimiento:%d/%m/%Y}" if doc.fecha_vencimiento else ""
+        cuerpo = f"Te enviamos adjunta la {nombre} por {formatear_clp(doc.total)}{vigencia}."
+        cierre = "Quedamos atentos a tus comentarios."
+    elif doc.es_factura:
+        vence = f", con vencimiento el {doc.fecha_vencimiento:%d/%m/%Y}" if doc.fecha_vencimiento else ""
+        cuerpo = f"Te enviamos adjunta la {nombre} por {formatear_clp(doc.total)}{vence}."
+        cierre = "Cualquier consulta, estamos para ayudarte."
+    elif doc.es_nota:
+        ref = f", que corrige la {doc.referencia.tipo_corto.lower()} N° {doc.referencia.folio}" if doc.referencia else ""
+        cuerpo = f"Te enviamos adjunta la {nombre} por {formatear_clp(doc.total)}{ref}."
+        cierre = "Cualquier consulta, estamos para ayudarte."
+    else:
+        cuerpo = f"Te enviamos adjunta la {nombre}."
+        cierre = "Cualquier consulta, estamos para ayudarte."
     firma = usuario.get_full_name() or doc.sociedad.razon_social
     return {
         "para": contacto["email"],
-        "asunto": f"Cotización N° {doc.folio} · {doc.sociedad.razon_social}",
-        "mensaje": (f"Hola {saludo}:\n\nTe enviamos adjunta la cotización N° {doc.folio} por "
-                    f"{formatear_clp(doc.total)}{vigencia}.\n\nQuedamos atentos a tus comentarios."
+        "asunto": f"{doc.tipo_corto} N° {doc.folio} · {doc.sociedad.razon_social}",
+        "mensaje": (f"Hola {saludo}:\n\n{cuerpo}\n\n{cierre}"
                     f"\n\nSaludos,\n{firma}\n{doc.sociedad.razon_social}")}
 
 
 @con_sociedad
-def cotizacion_enviar(request, pk):
-    """Envía la cotización en PDF por correo. GET devuelve el formulario (para la ventana)."""
+def documento_correo(request, pk):
+    """Envía un documento emitido por correo con su PDF (y su XML si lo timbró la app).
+
+    GET devuelve el formulario para la ventana emergente.
+    """
     doc = _documento(request, pk)
-    if not doc.es_cotizacion or doc.estado != Documento.EMITIDO:
-        messages.error(request, "Emite la cotización antes de enviarla.")
+    lista_url = "cotizaciones" if doc.es_cotizacion else "documentos"
+    if doc.estado != Documento.EMITIDO:
+        messages.error(request, "Emite el documento antes de enviarlo.")
         return redirect("documento", pk=pk)
-    form = EnviarCorreoForm(request.POST or None, initial=_correo_cotizacion_inicial(doc, request.user))
+    form = EnviarCorreoForm(request.POST or None, initial=_correo_inicial(doc, request.user))
     if request.method == "POST":
         if not settings.CORREO_CONFIGURADO:
             messages.error(request, "El envío de correos no está configurado.")
@@ -765,8 +789,10 @@ def cotizacion_enviar(request, pk):
                 datos["asunto"], datos["mensaje"], to=datos["para"],
                 from_email=f"{doc.sociedad.razon_social} <{settings.DEFAULT_FROM_EMAIL}>",
                 reply_to=[c for c in (request.user.email or doc.sociedad.email,) if c] or None)
-            correo.attach(f"Cotizacion_{doc.folio}_{doc.sociedad.razon_social}.pdf".replace(" ", "_"),
-                          generar_pdf(doc), "application/pdf")
+            base = re.sub(r"[^\w-]+", "_", f"{doc.tipo_corto}_{doc.folio}_{doc.sociedad.razon_social}")
+            correo.attach(f"{base}.pdf", generar_pdf(doc, cedible=False), "application/pdf")
+            if doc.es_propio:
+                correo.attach(f"{base}.xml", bytes(doc.xml_firmado), "application/xml")
             try:
                 correo.send()
             except Exception:
@@ -777,16 +803,17 @@ def cotizacion_enviar(request, pk):
                 doc.save(update_fields=["correo_enviado_a", "correo_enviado_el"])
                 messages.success(request, f"{doc} enviada a {doc.correo_enviado_a}.")
                 if request.POST.get("volver") == "lista":
-                    return redirect("cotizaciones")
+                    return redirect(lista_url)
                 return redirect("documento", pk=pk)
         else:
             for errores in form.errors.values():
                 for e in errores:
                     messages.error(request, e)
         return redirect("documento", pk=pk)
-    return render(request, "core/_enviar_cotizacion.html", {
+    return render(request, "core/_enviar_correo.html", {
         "doc": doc, "form": form, "correo_configurado": settings.CORREO_CONFIGURADO,
-        "volver": request.GET.get("volver", "")})
+        "volver": request.GET.get("volver", ""),
+        "rol": dict(Cliente.ROLES)[_rol_destinatario(doc)].lower()})
 
 
 # --- Emisión electrónica propia ------------------------------------------------

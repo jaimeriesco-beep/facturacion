@@ -848,6 +848,7 @@ class EnviarCotizacionTests(Base):
         # Sin contacto comercial: el campo viene vacío y se puede escribir.
         r = self.client.get(reverse("cotizacion_enviar", args=[cot.pk]))
         self.assertContains(r, "no tiene correo de contacto comercial")
+        self.assertNotContains(r, "portal del SII")
         Cliente.objects.filter(pk=self.cli.pk).update(comercial_nombre="Ana", comercial_email="ana@ejemplo.cl")
         get_user_model().objects.filter(username="jaime").update(email="jaime@ejemplo.cl")
         r = self.client.get(reverse("cotizacion_enviar", args=[cot.pk]))
@@ -862,8 +863,8 @@ class EnviarCotizacionTests(Base):
         self.assertEqual((m.to, m.reply_to), (["ana@ejemplo.cl", "compras@ejemplo.cl"], ["jaime@ejemplo.cl"]))
         nombre, contenido, tipo = m.attachments[0]
         self.assertTrue(contenido.startswith(b"%PDF") and nombre.endswith(".pdf") and tipo == "application/pdf")
-        self.assertContains(self.client.get(reverse("documento", args=[cot.pk])), "Enviada por correo")
-        self.assertContains(self.client.get(reverse("cotizaciones")), f"/cotizaciones/{cot.pk}/enviar/?volver=lista")
+        self.assertContains(self.client.get(reverse("documento", args=[cot.pk])), "Enviado por correo")
+        self.assertContains(self.client.get(reverse("cotizaciones")), f"/documentos/{cot.pk}/correo/?volver=lista")
         # Desde el listado vuelve al listado; correos inválidos o demasiados se rechazan.
         r = self.client.post(reverse("cotizacion_enviar", args=[cot.pk]),
                              {"para": "otro@ejemplo.cl", "asunto": "a", "mensaje": "b", "volver": "lista"})
@@ -929,3 +930,33 @@ class DecimalesTests(Base):
         prod = Producto.objects.get(nombre="Granel")
         self.assertEqual(str(prod.precio.normalize()), "14.5")
         self.assertContains(self.client.get(reverse("producto_editar", args=[prod.pk])), 'value="14,5"')
+
+
+@override_settings(CORREO_CONFIGURADO=True, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+                   DEFAULT_FROM_EMAIL="facturacion@ejemplo.cl")
+class EnviarDocumentosTests(Base):
+    def test_factura_va_al_contacto_de_facturacion(self):
+        from django.core import mail
+        Cliente.objects.filter(pk=self.cli.pk).update(
+            contacto_unico=False, comercial_email="ventas@ejemplo.cl",
+            facturacion_nombre="Beto", facturacion_email="pagos@ejemplo.cl")
+        borrador = self.factura()
+        self.assertNotContains(self.client.get(reverse("documentos")), f"/documentos/{borrador.pk}/correo/")
+        doc = self.factura(folio=15)
+        self.assertContains(self.client.get(reverse("documentos")), f"/documentos/{doc.pk}/correo/?volver=lista")
+        self.assertContains(self.client.get(reverse("documento", args=[doc.pk])), "Enviar por correo")
+        r = self.client.get(reverse("documento_correo", args=[doc.pk]))
+        self.assertContains(r, 'value="pagos@ejemplo.cl"')
+        self.assertContains(r, "Hola Beto:")
+        self.assertContains(r, "factura N° 15 por $119.000, con vencimiento el")
+        self.assertContains(r, "portal del SII")            # registrada desde el portal: copia sin timbre
+        r = self.client.post(reverse("documento_correo", args=[doc.pk]),
+                             {"para": "pagos@ejemplo.cl", "asunto": "Factura N° 15", "mensaje": "Adjunto.",
+                              "volver": "lista"})
+        self.assertRedirects(r, reverse("documentos"))
+        self.assertEqual([a[0] for a in mail.outbox[0].attachments], ["Factura_15_Verde_Vertical.pdf"])
+        self.client.post(reverse("nota_nueva", args=[doc.pk, NOTA_CREDITO]))
+        nota = Documento.objects.get(tipo=NOTA_CREDITO)
+        self.client.post(reverse("documento_emitir", args=[nota.pk]), {"folio": 2})
+        self.assertContains(self.client.get(reverse("documento_correo", args=[nota.pk])),
+                            "que corrige la factura N° 15")

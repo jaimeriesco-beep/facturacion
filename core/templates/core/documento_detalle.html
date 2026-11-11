@@ -13,6 +13,7 @@
     </div>
   </div>
   <div class="acciones">
+    {% if doc.estado == 'emitido' %}<button type="button" class="primario" data-ver="{% url 'documento_correo' doc.pk %}" data-titulo="Enviar {{ doc }} por correo">Enviar por correo</button>{% endif %}
     {% if doc.estado == 'borrador' %}
       <a class="boton" href="{% url 'documento_editar' doc.pk %}">Editar</a>
       <form method="post" action="{% url 'documento_eliminar' doc.pk %}" onsubmit="return confirm('¿Eliminar este borrador?')">{% csrf_token %}<button class="peligro">Eliminar</button></form>
@@ -22,7 +23,6 @@
     {% elif doc.es_guia %}
       <form method="post" action="{% url 'guia_facturar' doc.pk %}">{% csrf_token %}<button>Facturar esta guía</button></form>
     {% elif doc.es_cotizacion %}
-      <button type="button" class="primario" data-ver="{% url 'cotizacion_enviar' doc.pk %}" data-titulo="Enviar {{ doc }} por correo">Enviar por correo</button>
       <form method="post" action="{% url 'cotizacion_facturar' doc.pk %}">{% csrf_token %}<button>Convertir en factura</button></form>
       <a class="boton" href="{% url 'documento_pdf' doc.pk %}" target="_blank">PDF</a>
       <form method="post" action="{% url 'documento_reabrir' doc.pk %}">{% csrf_token %}<button>Corregir</button></form>
@@ -102,7 +102,7 @@
     <h2>Documento</h2>
     <dl class="datos">
       <dt>Tipo</dt><dd>{{ doc.get_tipo_display }}{% if not doc.es_cotizacion %} ({{ doc.tipo }}){% endif %}</dd>
-      {% if doc.correo_enviado_el %}<dt>Enviada por correo</dt><dd>{{ doc.correo_enviado_el|date:"d/m/Y H:i" }} a {{ doc.correo_enviado_a }}</dd>{% endif %}
+      {% if doc.correo_enviado_el %}<dt>Enviado por correo</dt><dd>{{ doc.correo_enviado_el|date:"d/m/Y H:i" }} a {{ doc.correo_enviado_a }}</dd>{% endif %}
       {% if doc.gracias_enviado %}<dt>Agradecimiento</dt><dd>Enviado el {{ doc.gracias_enviado|date:"d/m/Y H:i" }}</dd>{% endif %}
       <dt>Emisión</dt><dd>{{ doc.fecha_emision|date:"d/m/Y" }}</dd>
       {% if doc.es_factura %}<dt>Vencimiento</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}

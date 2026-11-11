@@ -1,5 +1,5 @@
 <tr>
-  <td class="c-prod" data-rotulo="Producto o servicio">{% for oculto in f.hidden_fields %}{{ oculto }}{% endfor %}{{ f.producto }}</td>
+  <td class="c-prod" data-rotulo="Producto (SKU)">{% for oculto in f.hidden_fields %}{{ oculto }}{% endfor %}{{ f.producto }}</td>
   <td class="c-texto" data-rotulo="Descripción">{{ f.descripcion }}{{ f.descripcion.errors }}</td>
   <td class="c-cant" data-rotulo="Cantidad">{{ f.cantidad }}{{ f.cantidad.errors }}</td>
   <td class="c-precio" data-rotulo="Precio neto">{{ f.precio }}{{ f.precio.errors }}</td>

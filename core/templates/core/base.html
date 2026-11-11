@@ -20,7 +20,7 @@
     <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#cobranza"/></svg><span>Cobranza</span></a>
     <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#recurrentes"/></svg><span>Recurrentes</span></a>
     <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#clientes"/></svg><span>Clientes</span></a>
-    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos y servicios</span></a>
+    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos (SKU)</span></a>
     <div class="seccion">Compras</div>
     <span class="pronto"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#compras"/></svg><span>Próximamente</span></span>
     <div class="seccion">Marketing</div>

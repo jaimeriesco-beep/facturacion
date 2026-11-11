@@ -352,10 +352,10 @@ def productos(request):
               [p.nombre, p.codigo, p.unidad, formatear_clp(p.precio),
                "Exento" if p.exento else "Afecto", si_no(p.activo)])
              for p in request.sociedad.productos.all()]
-    return lista(request, "Productos y servicios",
-                 ["Nombre", "Código", "Unidad", "Precio neto", "IVA", "Activo"],
-                 filas, "producto_nuevo", "Nuevo producto o servicio",
-                 "Aún no hay productos ni servicios.")
+    return lista(request, "Productos (SKU)",
+                 ["Nombre", "SKU", "Unidad", "Precio neto", "IVA", "Activo"],
+                 filas, "producto_nuevo", "Nuevo producto",
+                 "Aún no hay productos.")
 
 
 @con_sociedad
@@ -363,7 +363,7 @@ def producto_form(request, pk=None):
     instancia = (get_object_or_404(Producto, pk=pk, sociedad=request.sociedad) if pk
                  else Producto(sociedad=request.sociedad))
     return formulario_simple(request, ProductoForm, instancia,
-                             "Editar producto o servicio" if pk else "Nuevo producto o servicio",
+                             "Editar producto" if pk else "Nuevo producto",
                              "productos")
 
 

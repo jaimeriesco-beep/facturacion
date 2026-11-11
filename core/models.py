@@ -153,7 +153,8 @@ class Cliente(ConRut):
 
 class Producto(models.Model):
     sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="productos")
-    codigo = models.CharField("Código", max_length=35, blank=True)
+    codigo = models.CharField("SKU", max_length=35, blank=True,
+                              help_text="Código interno del producto.")
     nombre = models.CharField(max_length=80)
     descripcion = models.CharField("Descripción", max_length=300, blank=True)
     unidad = models.CharField(max_length=4, blank=True, help_text="Ej.: UN, HR, MES")
@@ -163,8 +164,8 @@ class Producto(models.Model):
 
     class Meta:
         ordering = ["nombre"]
-        verbose_name = "producto o servicio"
-        verbose_name_plural = "productos y servicios"
+        verbose_name = "producto"
+        verbose_name_plural = "productos (SKU)"
 
     def __str__(self):
         return self.nombre
@@ -388,7 +389,7 @@ class Documento(models.Model):
 class LineaBase(models.Model):
     producto = models.ForeignKey(
         Producto, null=True, blank=True, on_delete=models.SET_NULL,
-        verbose_name="Producto o servicio")
+        verbose_name="Producto (SKU)")
     descripcion = models.CharField("Descripción", max_length=300)
     cantidad = models.DecimalField(max_digits=12, decimal_places=3, default=1)
     precio = models.DecimalField("Precio unitario", max_digits=14, decimal_places=2, default=0)

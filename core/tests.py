@@ -755,7 +755,8 @@ class EliminarProductoTests(Base):
         doc.recalcular()
         r = self.client.get(reverse("productos"))
         self.assertContains(r, f'action="/productos/{prod.pk}/eliminar/"')
-        self.assertContains(r, 'class="basurero"')
+        self.assertContains(r, 'class="icono-accion basurero"')
+        self.assertContains(r, f'href="/productos/{prod.pk}/" class="icono-accion editar"')
         self.assertNotContains(self.client.get(reverse("clientes")), "basurero")   # solo en productos
         self.assertEqual(self.client.get(reverse("producto_eliminar", args=[prod.pk])).status_code, 405)
         otra = Sociedad.objects.create(rut="76086428-5", razon_social="Otra")

@@ -11,8 +11,9 @@
       {% for fila in filas %}
       <tr>{% for celda in fila.celdas %}<td>{% if forloop.first %}<a href="{{ fila.url }}">{{ celda }}</a>{% else %}{{ celda }}{% endif %}</td>{% endfor %}
         {% if fila.eliminar %}<td class="fila-acciones">
-          <form method="post" action="{{ fila.eliminar.0 }}" data-nombre="{{ fila.eliminar.1 }}" onsubmit="return confirm('¿Eliminar «' + this.dataset.nombre + '»? Las facturas que ya lo usan no cambian.')">{% csrf_token %}
-            <button type="submit" class="basurero" title="Eliminar" aria-label="Eliminar {{ fila.eliminar.1 }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button>
+          <a href="{{ fila.url }}" class="icono-accion editar" title="Editar" aria-label="Editar {{ fila.eliminar.1 }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#editar"/></svg></a>
+          <form method="post" style="display:inline" action="{{ fila.eliminar.0 }}" data-nombre="{{ fila.eliminar.1 }}" onsubmit="return confirm('¿Eliminar «' + this.dataset.nombre + '»? Las facturas que ya lo usan no cambian.')">{% csrf_token %}
+            <button type="submit" class="icono-accion basurero" title="Eliminar" aria-label="Eliminar {{ fila.eliminar.1 }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button>
           </form>
         </td>{% endif %}
       </tr>

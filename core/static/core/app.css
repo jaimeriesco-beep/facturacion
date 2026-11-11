@@ -135,10 +135,14 @@ textarea { resize: vertical; line-height: 1.5; }
   margin: 18px 0 6px; }
 .asoc-titulo:first-child { margin-top: 0; }
 .asoc { margin-bottom: 4px; }
-.basurero { border: 0; background: none; padding: 5px; border-radius: 6px; color: var(--rojo);
-  display: inline-flex; cursor: pointer; }
+.icono-accion { border: 0; background: none; padding: 5px; border-radius: 6px; display: inline-flex;
+  cursor: pointer; vertical-align: middle; }
+.icono-accion .icono { width: 19px; height: 19px; }
+.icono-accion + form { margin-left: 4px; }
+.editar { color: var(--azul); }
+.editar:hover { background: var(--azul-claro); text-decoration: none; }
+.basurero { color: var(--rojo); }
 .basurero:hover { background: var(--rojo-claro); }
-.basurero .icono { width: 19px; height: 19px; }
 .ventana { border: 0; border-radius: 10px; padding: 0; width: min(780px, calc(100vw - 24px));
   max-height: calc(100vh - 40px); box-shadow: 0 20px 60px rgba(0,0,0,.3); color: var(--texto); }
 .ventana::backdrop { background: rgba(20, 40, 30, .55); }

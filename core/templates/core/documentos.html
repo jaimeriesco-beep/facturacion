@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load formato %}
+{% load formato static %}
 {% block titulo %}{% if cotizaciones %}Cotizaciones{% else %}Documentos de venta{% endif %}{% endblock %}
 {% block contenido %}
 <div class="titulo">
@@ -33,9 +33,9 @@
         <td class="num">{% if d.estado_cobro %}{{ d.saldo|clp }}{% else %}—{% endif %}</td>
         <td class="fila-acciones">
           {% if d.n_asociados %}<button type="button" class="chico" data-ver="{% url 'documento_asociados' d.pk %}" data-titulo="Documentos asociados a {{ d }}" title="Documentos asociados">Asociados ({{ d.n_asociados }})</button>{% endif %}
-          {% if d.es_cotizacion and d.estado == 'emitido' %}<button type="button" class="chico" data-ver="{% url 'cotizacion_enviar' d.pk %}?volver=lista" data-titulo="Enviar {{ d }} por correo">Enviar</button>{% endif %}
-          <button type="button" class="chico" data-ver="{% url 'documento_vista' d.pk %}" data-titulo="{{ d }}">Ver</button>
-          <a class="boton chico" href="{% url 'documento_pdf' d.pk %}?descargar=1">PDF</a>
+          {% if d.es_cotizacion and d.estado == 'emitido' %}<button type="button" class="icono-accion accion-enviar" data-ver="{% url 'cotizacion_enviar' d.pk %}?volver=lista" data-titulo="Enviar {{ d }} por correo" title="Enviar por correo" aria-label="Enviar {{ d }} por correo"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#enviar"/></svg></button>{% endif %}
+          <button type="button" class="icono-accion accion-ver" data-ver="{% url 'documento_vista' d.pk %}" data-titulo="{{ d }}" title="Ver" aria-label="Ver {{ d }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#ver"/></svg></button>
+          <a class="icono-accion accion-pdf" href="{% url 'documento_pdf' d.pk %}?descargar=1" title="Descargar PDF" aria-label="Descargar PDF de {{ d }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#pdf"/></svg></a>
         </td>
       </tr>
     {% endfor %}

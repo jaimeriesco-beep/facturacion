@@ -473,7 +473,7 @@ class VerYPdfTests(Base):
         r = self.client.get(reverse("documentos"))
         for doc in (borrador, emitida):
             self.assertContains(r, f'data-ver="/documentos/{doc.pk}/vista/"')
-            self.assertContains(r, f'href="/documentos/{doc.pk}/pdf/?descargar=1"')
+            self.assertContains(r, f'href="/documentos/{doc.pk}/pdf/?descargar=1" title="Descargar PDF"')
         vista = self.client.get(reverse("documento_vista", args=[emitida.pk]))
         self.assertContains(vista, "N° 77")
         self.assertContains(vista, "$119.000")

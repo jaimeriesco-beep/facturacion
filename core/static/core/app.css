@@ -139,6 +139,12 @@ textarea { resize: vertical; line-height: 1.5; }
   cursor: pointer; vertical-align: middle; }
 .icono-accion .icono { width: 19px; height: 19px; }
 .icono-accion + form { margin-left: 4px; }
+.fila-acciones > * { vertical-align: middle; }
+.fila-acciones .icono-accion + .icono-accion { margin-left: 2px; }
+.accion-ver { color: var(--azul); }
+.accion-ver:hover { background: var(--azul-claro); }
+.accion-enviar, .accion-pdf { color: var(--verde); }
+.accion-enviar:hover, .accion-pdf:hover { background: var(--verde-claro); text-decoration: none; }
 .editar { color: var(--azul); }
 .editar:hover { background: var(--azul-claro); text-decoration: none; }
 .basurero { color: var(--rojo); }

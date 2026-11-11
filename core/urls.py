@@ -27,6 +27,7 @@ urlpatterns = [
     path("cotizaciones/", v.documentos, {"cotizaciones": True}, name="cotizaciones"),
     path("cotizaciones/<int:pk>/emitir/", v.cotizacion_emitir, name="cotizacion_emitir"),
     path("cotizaciones/<int:pk>/facturar/", v.cotizacion_facturar, name="cotizacion_facturar"),
+    path("cotizaciones/<int:pk>/enviar/", v.cotizacion_enviar, name="cotizacion_enviar"),
     path("documentos/<int:pk>/", v.documento_detalle, name="documento"),
     path("documentos/<int:pk>/editar/", v.documento_editar, name="documento_editar"),
     path("documentos/<int:pk>/emitir/", v.documento_emitir, name="documento_emitir"),

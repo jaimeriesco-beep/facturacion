@@ -1,0 +1,24 @@
+<dialog id="vista" class="ventana">
+  <div class="ventana-barra"><strong id="vista-titulo"></strong><button type="button" id="vista-cerrar" aria-label="Cerrar">Cerrar ✕</button></div>
+  <div id="vista-cuerpo"></div>
+</dialog>
+<script>
+// Botón «Ver»: muestra el documento en una ventana sobre el listado.
+(function () {
+  const ventana = document.getElementById("vista"), cuerpo = document.getElementById("vista-cuerpo");
+  document.querySelectorAll("[data-ver]").forEach((boton) => boton.addEventListener("click", async () => {
+    document.getElementById("vista-titulo").textContent = boton.dataset.titulo;
+    cuerpo.innerHTML = '<p class="suave">Cargando…</p>';
+    ventana.showModal();
+    try {
+      const respuesta = await fetch(boton.dataset.ver, { credentials: "same-origin" });
+      if (!respuesta.ok || respuesta.redirected) throw new Error();
+      cuerpo.innerHTML = await respuesta.text();
+    } catch (e) {
+      cuerpo.innerHTML = '<p class="aviso">No se pudo cargar el documento. Recarga la página e intenta de nuevo.</p>';
+    }
+  }));
+  document.getElementById("vista-cerrar").addEventListener("click", () => ventana.close());
+  ventana.addEventListener("click", (e) => { if (e.target === ventana) ventana.close(); });
+})();
+</script>

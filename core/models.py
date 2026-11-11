@@ -268,6 +268,9 @@ class Documento(models.Model):
     xml_firmado = models.BinaryField(null=True, blank=True, editable=False)
     timbrado = models.DateTimeField(null=True, blank=True, editable=False)
     gracias_enviado = models.DateTimeField(null=True, blank=True, editable=False)
+    # Último envío por correo del documento (cotizaciones).
+    correo_enviado_a = models.CharField(max_length=300, blank=True, editable=False)
+    correo_enviado_el = models.DateTimeField(null=True, blank=True, editable=False)
     envio = models.ForeignKey("Envio", null=True, blank=True, on_delete=models.SET_NULL,
                               related_name="documentos", editable=False)
     recurrente = models.ForeignKey(

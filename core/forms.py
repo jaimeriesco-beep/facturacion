@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
 from django.core.cache import cache
+from django.core.validators import validate_email
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
@@ -317,6 +318,27 @@ class UsuarioForm(forms.ModelForm):
                 from .models import DosPasos
                 DosPasos.objects.filter(usuario=usuario).delete()
         return usuario
+
+
+class EnviarCorreoForm(forms.Form):
+    para = forms.CharField(
+        label="Para", max_length=300,
+        help_text="Puedes escribir hasta 3 correos separados por coma.")
+    asunto = forms.CharField(label="Asunto", max_length=150)
+    mensaje = forms.CharField(label="Mensaje", widget=forms.Textarea(attrs={"rows": 7}))
+
+    def clean_para(self):
+        correos = [c.strip() for c in self.cleaned_data["para"].replace(";", ",").split(",") if c.strip()]
+        if not correos:
+            raise ValidationError("Escribe al menos un correo.")
+        if len(correos) > 3:
+            raise ValidationError("Máximo 3 correos.")
+        for correo in correos:
+            try:
+                validate_email(correo)
+            except ValidationError:
+                raise ValidationError(f"«{correo}» no es un correo válido.")
+        return correos
 
 
 class EmitirForm(forms.Form):

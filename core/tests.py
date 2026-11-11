@@ -828,3 +828,57 @@ class EliminarClienteTests(Base):
         self.assertContains(r, "Cliente «Libre · Sin historial» eliminado")
         self.assertFalse(Cliente.objects.filter(pk=libre.pk).exists())
         self.assertEqual(self.client.get(reverse("cliente_eliminar", args=[self.cli.pk])).status_code, 405)
+
+
+@override_settings(CORREO_CONFIGURADO=True, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+                   DEFAULT_FROM_EMAIL="facturacion@ejemplo.cl")
+class EnviarCotizacionTests(Base):
+    def cotizacion(self):
+        from .models import COTIZACION
+        cot = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=COTIZACION)
+        Linea.objects.create(documento=cot, descripcion="Albahaca", cantidad=10, precio=5000); cot.recalcular()
+        return cot
+
+    def test_envia_pdf_al_contacto_o_a_otro_correo(self):
+        from django.core import mail
+        cot = self.cotizacion()
+        self.assertRedirects(self.client.get(reverse("cotizacion_enviar", args=[cot.pk])),
+                             reverse("documento", args=[cot.pk]))                    # borrador: no
+        self.client.post(reverse("cotizacion_emitir", args=[cot.pk]))
+        # Sin contacto comercial: el campo viene vacío y se puede escribir.
+        r = self.client.get(reverse("cotizacion_enviar", args=[cot.pk]))
+        self.assertContains(r, "no tiene correo de contacto comercial")
+        Cliente.objects.filter(pk=self.cli.pk).update(comercial_nombre="Ana", comercial_email="ana@ejemplo.cl")
+        get_user_model().objects.filter(username="jaime").update(email="jaime@ejemplo.cl")
+        r = self.client.get(reverse("cotizacion_enviar", args=[cot.pk]))
+        self.assertContains(r, 'value="ana@ejemplo.cl"')
+        self.assertContains(r, "Hola Ana:")
+        self.assertContains(r, "cotización N° 1 por $59.500")
+        r = self.client.post(reverse("cotizacion_enviar", args=[cot.pk]), {
+            "para": "ana@ejemplo.cl, compras@ejemplo.cl", "asunto": "Cotización N° 1",
+            "mensaje": "Adjunto."}, follow=True)
+        self.assertContains(r, "enviada a ana@ejemplo.cl, compras@ejemplo.cl")
+        m = mail.outbox[0]
+        self.assertEqual((m.to, m.reply_to), (["ana@ejemplo.cl", "compras@ejemplo.cl"], ["jaime@ejemplo.cl"]))
+        nombre, contenido, tipo = m.attachments[0]
+        self.assertTrue(contenido.startswith(b"%PDF") and nombre.endswith(".pdf") and tipo == "application/pdf")
+        self.assertContains(self.client.get(reverse("documento", args=[cot.pk])), "Enviada por correo")
+        self.assertContains(self.client.get(reverse("cotizaciones")), f"/cotizaciones/{cot.pk}/enviar/?volver=lista")
+        # Desde el listado vuelve al listado; correos inválidos o demasiados se rechazan.
+        r = self.client.post(reverse("cotizacion_enviar", args=[cot.pk]),
+                             {"para": "otro@ejemplo.cl", "asunto": "a", "mensaje": "b", "volver": "lista"})
+        self.assertRedirects(r, reverse("cotizaciones"))
+        for malo, error in (("no-es-correo", "no es un correo válido"),
+                            ("a@x.cl,b@x.cl,c@x.cl,d@x.cl", "Máximo 3 correos")):
+            r = self.client.post(reverse("cotizacion_enviar", args=[cot.pk]),
+                                 {"para": malo, "asunto": "a", "mensaje": "b"}, follow=True)
+            self.assertContains(r, error)
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_brevo_lleva_el_adjunto(self):
+        from django.core.mail import EmailMessage
+        from .correo import BrevoBackend
+        m = EmailMessage("A", "B", to=["x@ejemplo.cl"])
+        m.attach("cotizacion.pdf", b"%PDF-1.4 prueba", "application/pdf")
+        cuerpo = BrevoBackend._cuerpo(m)
+        self.assertEqual(cuerpo["attachment"], [{"name": "cotizacion.pdf", "content": "JVBERi0xLjQgcHJ1ZWJh"}])

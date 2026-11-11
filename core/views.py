@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordResetConfirmView, PasswordResetView
 from django.core.cache import cache
+from django.core.mail import EmailMessage
 from django.core.management import call_command
 from django.db import transaction
 from django.db.models import Max, Q, Sum
@@ -29,7 +30,7 @@ from .dte import servicio
 from .dte.motor import ErrorDTE
 from .dte.pdf import generar_pdf
 from .dte.secretos import ErrorSecreto, cifrar, descifrar
-from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm,
+from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm, EnviarCorreoForm,
                     ImportarClientesForm, LineasFormSet, PagoForm, ProductoForm, RecurrenteForm,
                     RecurrenteLineasFormSet, SociedadForm, UsuarioForm)
 from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
@@ -732,6 +733,60 @@ def marketing_vista(request):
         "sin_correo": sum(1 for c in clientes if c.recibe_gracias and not c.contacto("comercial")["email"]),
         "enviados_mes": soc.documentos.filter(
             gracias_enviado__gte=timezone.now().replace(day=1, hour=0, minute=0)).count()})
+
+
+def _correo_cotizacion_inicial(doc, usuario):
+    contacto = doc.cliente.contacto("comercial")
+    saludo = contacto["nombre"] or doc.cliente.nombre_fantasia or doc.cliente.razon_social
+    vigencia = f", válida hasta el {doc.fecha_vencimiento:%d/%m/%Y}" if doc.fecha_vencimiento else ""
+    firma = usuario.get_full_name() or doc.sociedad.razon_social
+    return {
+        "para": contacto["email"],
+        "asunto": f"Cotización N° {doc.folio} · {doc.sociedad.razon_social}",
+        "mensaje": (f"Hola {saludo}:\n\nTe enviamos adjunta la cotización N° {doc.folio} por "
+                    f"{formatear_clp(doc.total)}{vigencia}.\n\nQuedamos atentos a tus comentarios."
+                    f"\n\nSaludos,\n{firma}\n{doc.sociedad.razon_social}")}
+
+
+@con_sociedad
+def cotizacion_enviar(request, pk):
+    """Envía la cotización en PDF por correo. GET devuelve el formulario (para la ventana)."""
+    doc = _documento(request, pk)
+    if not doc.es_cotizacion or doc.estado != Documento.EMITIDO:
+        messages.error(request, "Emite la cotización antes de enviarla.")
+        return redirect("documento", pk=pk)
+    form = EnviarCorreoForm(request.POST or None, initial=_correo_cotizacion_inicial(doc, request.user))
+    if request.method == "POST":
+        if not settings.CORREO_CONFIGURADO:
+            messages.error(request, "El envío de correos no está configurado.")
+        elif form.is_valid():
+            datos = form.cleaned_data
+            correo = EmailMessage(
+                datos["asunto"], datos["mensaje"], to=datos["para"],
+                from_email=f"{doc.sociedad.razon_social} <{settings.DEFAULT_FROM_EMAIL}>",
+                reply_to=[c for c in (request.user.email or doc.sociedad.email,) if c] or None)
+            correo.attach(f"Cotizacion_{doc.folio}_{doc.sociedad.razon_social}.pdf".replace(" ", "_"),
+                          generar_pdf(doc), "application/pdf")
+            try:
+                correo.send()
+            except Exception:
+                messages.error(request, "No se pudo enviar el correo. Intenta de nuevo en unos minutos.")
+            else:
+                doc.correo_enviado_a = ", ".join(datos["para"])
+                doc.correo_enviado_el = timezone.now()
+                doc.save(update_fields=["correo_enviado_a", "correo_enviado_el"])
+                messages.success(request, f"{doc} enviada a {doc.correo_enviado_a}.")
+                if request.POST.get("volver") == "lista":
+                    return redirect("cotizaciones")
+                return redirect("documento", pk=pk)
+        else:
+            for errores in form.errors.values():
+                for e in errores:
+                    messages.error(request, e)
+        return redirect("documento", pk=pk)
+    return render(request, "core/_enviar_cotizacion.html", {
+        "doc": doc, "form": form, "correo_configurado": settings.CORREO_CONFIGURADO,
+        "volver": request.GET.get("volver", "")})
 
 
 # --- Emisión electrónica propia ------------------------------------------------

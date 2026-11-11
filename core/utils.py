@@ -52,7 +52,8 @@ def leer_decimal_cl(texto):
 
 
 def redondear(valor):
-    """Redondea a pesos enteros (medio hacia arriba, como el SII)."""
+    """Redondea a pesos enteros según el art. 21 de la Ley 18.267: menos de 50 centavos
+    se desprecia; 50 centavos o más sube al entero siguiente."""
     return int(Decimal(valor).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 

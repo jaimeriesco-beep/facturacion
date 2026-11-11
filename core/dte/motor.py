@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.serialization import pkcs12
 from lxml import etree
 
-from ..utils import redondear_arriba, sin_ceros
+from ..utils import redondear, sin_ceros
 
 NS = "http://www.sii.cl/SiiDte"
 DSIG = "http://www.w3.org/2000/09/xmldsig#"
@@ -165,7 +165,7 @@ def validar(xml: bytes, esquema: str):
 def _detalle(numero, linea, marcar_exento):
     nombre = " ".join(linea.descripcion.split())
     bruto = linea.cantidad * linea.precio
-    descuento = redondear_arriba(bruto) - linea.monto if linea.descuento else 0
+    descuento = redondear(bruto) - linea.monto if linea.descuento else 0
     con_precio = linea.precio > 0
     return bloque(
         "Detalle",

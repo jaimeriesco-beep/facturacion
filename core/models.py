@@ -9,7 +9,7 @@ from django.db.models import BigIntegerField, Count, F, OuterRef, Q, Subquery, S
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .utils import MESES, formatear_rut, normalizar_rut, redondear, redondear_arriba
+from .utils import MESES, formatear_rut, normalizar_rut, redondear
 
 FACTURA, FACTURA_EXENTA, GUIA, NOTA_DEBITO, NOTA_CREDITO = 33, 34, 52, 56, 61
 COTIZACION = 1  # documento interno, no tributario: no existe para el SII
@@ -439,9 +439,14 @@ class LineaBase(models.Model):
             raise ValidationError({"descuento": "Debe estar entre 0 y 100."})
 
     def calcular_monto(self):
-        """Monto neto de la línea, en pesos enteros redondeados hacia arriba."""
+        """Monto neto de la línea en pesos enteros.
+
+        Regla legal (art. 21 de la Ley 18.267; Oficio SII N° 3.257 de 2009): se desprecian
+        las fracciones menores a 50 centavos y las de 50 centavos o más suben al entero
+        siguiente. Base imponible, IVA y total deben quedar en pesos enteros.
+        """
         bruto = Decimal(self.cantidad) * Decimal(self.precio)
-        return redondear_arriba(bruto * (Decimal(100) - Decimal(self.descuento)) / 100)
+        return redondear(bruto * (Decimal(100) - Decimal(self.descuento)) / 100)
 
 
 class Linea(LineaBase):

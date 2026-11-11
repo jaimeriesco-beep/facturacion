@@ -55,8 +55,8 @@
     if (!/^-?\d*,?\d*$/.test(t)) return NaN;
     return Number(t.replace(",", "."));
   }
-  // Redondeo hacia arriba sin el ruido de los decimales binarios (3 × 14,1 = 42,3 → 43).
-  const arriba = (n) => Math.ceil(Number(n.toFixed(6)));
+  // Redondeo legal a pesos enteros (50 centavos o más sube), sin el ruido de los decimales binarios.
+  const pesoEntero = (n) => Math.round(Number(n.toFixed(6)));
   const campo = (fila, nombre) => fila.querySelector(`[name$="-${nombre}"]`);
 
   function recalcular() {
@@ -69,7 +69,7 @@
         casilla.classList.toggle("invalido", Number.isNaN(v));
         return Number.isNaN(v) ? 0 : v;
       });
-      const monto = arriba(valores[0] * valores[1] * (100 - valores[2]) / 100);
+      const monto = pesoEntero(valores[0] * valores[1] * (100 - valores[2]) / 100);
       if (soloExento || campo(fila, "exento").checked) exento += monto; else neto += monto;
     });
     const impuesto = Math.round(neto * iva / 100);

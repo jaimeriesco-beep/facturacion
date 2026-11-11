@@ -32,6 +32,7 @@
         <td class="num">{{ d.total|clp }}</td>
         <td class="num">{% if d.estado_cobro %}{{ d.saldo|clp }}{% else %}—{% endif %}</td>
         <td class="fila-acciones">
+          {% if d.n_asociados %}<button type="button" class="chico" data-ver="{% url 'documento_asociados' d.pk %}" data-titulo="Documentos asociados a {{ d }}" title="Documentos asociados">Asociados ({{ d.n_asociados }})</button>{% endif %}
           <button type="button" class="chico" data-ver="{% url 'documento_vista' d.pk %}" data-titulo="{{ d }}">Ver</button>
           <a class="boton chico" href="{% url 'documento_pdf' d.pk %}?descargar=1">PDF</a>
         </td>

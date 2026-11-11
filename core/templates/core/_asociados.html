@@ -1,0 +1,25 @@
+{% load formato %}
+{% if viene_de %}
+<h3 class="asoc-titulo">Viene de</h3>
+{% include "core/_asociados_tabla.html" with documentos=viene_de %}
+{% endif %}
+{% if generados %}
+<h3 class="asoc-titulo">Generados a partir de {{ doc }}</h3>
+{% include "core/_asociados_tabla.html" with documentos=generados %}
+{% endif %}
+{% if not viene_de and not generados %}<p class="suave" style="margin:0">Este documento no tiene documentos asociados.</p>{% endif %}
+{% if con_acciones and doc.estado == 'emitido' %}
+{% if doc.es_factura or doc.es_guia or doc.es_cotizacion %}
+<h3 class="asoc-titulo">Crear un documento a partir de {{ doc }}</h3>
+<div class="acciones">
+  {% if doc.es_factura %}
+  <form method="post" action="{% url 'nota_nueva' doc.pk NC %}">{% csrf_token %}<button>Nota de crédito</button></form>
+  <form method="post" action="{% url 'nota_nueva' doc.pk ND %}">{% csrf_token %}<button>Nota de débito</button></form>
+  {% elif doc.es_guia %}
+  <form method="post" action="{% url 'guia_facturar' doc.pk %}">{% csrf_token %}<button>Facturar esta guía</button></form>
+  {% elif doc.es_cotizacion %}
+  <form method="post" action="{% url 'cotizacion_facturar' doc.pk %}">{% csrf_token %}<button>Convertir en factura</button></form>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}

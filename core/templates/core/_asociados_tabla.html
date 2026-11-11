@@ -1,0 +1,17 @@
+{% load formato %}
+<div style="overflow-x:auto">
+<table class="asoc">
+  <thead><tr><th>Documento</th><th>Emisión</th><th>Estado</th><th class="num">Total</th><th></th></tr></thead>
+  <tbody>
+  {% for d in documentos %}
+    <tr>
+      <td><a href="{% url 'documento' d.pk %}">{{ d }}</a>{% if d.es_nota and d.codigo_referencia %}<div class="ayuda">{{ d.get_codigo_referencia_display }}</div>{% endif %}</td>
+      <td>{{ d.fecha_emision|date:"d/m/Y" }}</td>
+      <td><span class="etiqueta e-{{ d.estado }}">{{ d.get_estado_display }}</span></td>
+      <td class="num">{% if d.tipo == 61 %}−{% endif %}{{ d.total|clp }}</td>
+      <td class="fila-acciones"><a class="boton chico" href="{% url 'documento_pdf' d.pk %}?descargar=1">PDF</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>

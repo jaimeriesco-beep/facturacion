@@ -131,6 +131,10 @@ textarea { resize: vertical; line-height: 1.5; }
 .contacto legend { font-weight: 700; padding: 0 6px; font-size: 13.5px; }
 .chico, .boton.chico { padding: 4px 10px; font-size: 13px; }
 .fila-acciones { white-space: nowrap; text-align: right; }
+.asoc-titulo { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--suave);
+  margin: 18px 0 6px; }
+.asoc-titulo:first-child { margin-top: 0; }
+.asoc { margin-bottom: 4px; }
 .basurero { border: 0; background: none; padding: 5px; border-radius: 6px; color: var(--rojo);
   display: inline-flex; cursor: pointer; }
 .basurero:hover { background: var(--rojo-claro); }

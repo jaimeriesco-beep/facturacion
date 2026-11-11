@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import BigIntegerField, F, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import BigIntegerField, Count, F, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -185,6 +185,14 @@ class DocumentoQuerySet(models.QuerySet):
             nd_a=suma(notas.filter(tipo=NOTA_DEBITO), "referencia", "total"),
         ).annotate(saldo_a=F("total") + F("nd_a") - F("nc_a") - F("pagado_a"))
 
+    def con_asociados(self):
+        """Anota cuántos documentos están vinculados a cada uno (en ambos sentidos)."""
+        def cuenta(campo):
+            sub = (Documento.objects.filter(**{campo: OuterRef("pk")}).values(campo)
+                   .annotate(c=Count("pk")).values("c"))
+            return Coalesce(Subquery(sub, output_field=BigIntegerField()), Value(0))
+        return self.annotate(n_hijos_a=cuenta("referencia"), n_derivados_a=cuenta("origen"))
+
     def ventas(self):
         """Documentos tributarios (todo menos las cotizaciones)."""
         return self.exclude(tipo=COTIZACION)
@@ -224,6 +232,10 @@ class Documento(models.Model):
     referencia = models.ForeignKey(
         "self", null=True, blank=True, on_delete=models.PROTECT, related_name="notas",
         verbose_name="Documento de referencia")
+    # Vínculo interno (no va al SII): la cotización desde la que se creó esta factura.
+    origen = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="derivados",
+        editable=False)
     codigo_referencia = models.PositiveSmallIntegerField(
         "Motivo", choices=REFERENCIAS, null=True, blank=True)
     razon_referencia = models.CharField("Razón de la referencia", max_length=90, blank=True)
@@ -299,6 +311,21 @@ class Documento(models.Model):
     @property
     def es_cotizacion(self):
         return self.tipo == COTIZACION
+
+    def asociados(self):
+        """Documentos vinculados: (de dónde viene, qué se generó a partir de este)."""
+        viene_de = [d for d in (self.referencia, self.origen) if d]
+        generados = list(self.notas.all()) + list(self.derivados.all())
+        generados.sort(key=lambda d: (d.fecha_emision, d.pk))
+        return viene_de, generados
+
+    @property
+    def n_asociados(self):
+        if hasattr(self, "n_hijos_a"):
+            hijos = self.n_hijos_a + self.n_derivados_a
+        else:
+            hijos = self.notas.count() + self.derivados.count()
+        return hijos + bool(self.referencia_id) + bool(self.origen_id)
 
     @property
     def es_propio(self):

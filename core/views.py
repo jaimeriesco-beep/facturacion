@@ -395,7 +395,8 @@ def _documento(request, pk):
 @con_sociedad
 def documentos(request, cotizaciones=False):
     base = request.sociedad.documentos
-    qs = (base.cotizaciones() if cotizaciones else base.ventas()).select_related("cliente").con_saldo()
+    qs = ((base.cotizaciones() if cotizaciones else base.ventas())
+          .select_related("cliente").con_saldo().con_asociados())
     tipo, estado, q = (request.GET.get(k, "").strip() for k in ("tipo", "estado", "q"))
     if tipo.isdigit():
         qs = qs.filter(tipo=int(tipo))
@@ -484,8 +485,19 @@ def documento_detalle(request, pk):
         "faltantes": (servicio.faltantes(doc)
                       if doc.estado == Documento.BORRADOR and not doc.es_cotizacion else []),
         "facturas_de_guia": doc.notas.filter(tipo__in=FACTURAS) if doc.es_guia else [],
+        "asociados": doc.asociados(),
         "emitir_form": EmitirForm(),
         "pago_form": PagoForm(documento=doc, initial={"monto": max(doc.saldo, 0)}),
+        "NC": NOTA_CREDITO, "ND": NOTA_DEBITO})
+
+
+@con_sociedad
+def documento_asociados(request, pk):
+    """Documentos vinculados a uno, para la ventana del listado."""
+    doc = _documento(request, pk)
+    viene_de, generados = doc.asociados()
+    return render(request, "core/_asociados.html", {
+        "doc": doc, "viene_de": viene_de, "generados": generados, "con_acciones": True,
         "NC": NOTA_CREDITO, "ND": NOTA_DEBITO})
 
 
@@ -638,7 +650,7 @@ def cotizacion_facturar(request, pk):
     todo_exento = all(l.exento for l in cotizacion.lineas.all())
     with transaction.atomic():
         factura = Documento.objects.create(
-            sociedad=request.sociedad, cliente=cotizacion.cliente,
+            sociedad=request.sociedad, cliente=cotizacion.cliente, origen=cotizacion,
             tipo=FACTURA_EXENTA if todo_exento else FACTURA,
             fecha_vencimiento=hoy() + timedelta(days=cotizacion.cliente.dias_pago),
             observaciones=f"Según cotización N° {cotizacion.folio}. {cotizacion.observaciones}".strip()[:300])

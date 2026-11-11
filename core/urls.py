@@ -38,6 +38,7 @@ urlpatterns = [
     path("documentos/<int:pk>/xml/", v.documento_xml, name="documento_xml"),
     path("documentos/<int:pk>/pdf/", v.documento_pdf, name="documento_pdf"),
     path("documentos/<int:pk>/vista/", v.documento_vista, name="documento_vista"),
+    path("documentos/<int:pk>/asociados/", v.documento_asociados, name="documento_asociados"),
     path("documentos/<int:pk>/enviar/", v.documento_enviar, name="documento_enviar"),
     path("sii/", v.conexion_sii, name="conexion_sii"),
     path("sii/enviar-pendientes/", v.enviar_pendientes, name="enviar_pendientes"),

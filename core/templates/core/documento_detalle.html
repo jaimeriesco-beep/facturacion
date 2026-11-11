@@ -108,7 +108,7 @@
       {% if doc.es_guia %}<dt>Traslado</dt><dd>{{ doc.get_ind_traslado_display|default:"—" }}</dd>
       {% if doc.direccion_destino %}<dt>Destino</dt><dd>{{ doc.direccion_destino }}{% if doc.comuna_destino %}, {{ doc.comuna_destino }}{% endif %}</dd>{% endif %}
       {% if doc.patente %}<dt>Patente</dt><dd>{{ doc.patente }}</dd>{% endif %}
-      {% for f in facturas_de_guia %}<dt>Facturada en</dt><dd><a href="{% url 'documento' f.pk %}">{{ f }}</a></dd>{% endfor %}{% endif %}
+{% endif %}
       {% if doc.caso_set %}<dt>Set de pruebas</dt><dd>{{ doc.caso_set }}</dd>{% endif %}
       {% if doc.referencia %}<dt>Referencia</dt><dd><a href="{% url 'documento' doc.referencia.pk %}">{{ doc.referencia }}</a></dd>
       {% if doc.es_nota %}<dt>Motivo</dt><dd>{{ doc.get_codigo_referencia_display|default:"—" }}{% if doc.razon_referencia %} · {{ doc.razon_referencia }}{% endif %}</dd>{% endif %}{% endif %}
@@ -147,8 +147,6 @@
       <tr><td>Pagado</td><td class="num">−{{ doc.pagado|clp }}</td></tr>
       <tr class="total"><td>Saldo</td><td class="num">{{ doc.saldo|clp }}</td></tr>
     </table>
-    {% if notas %}<h2 style="margin-top:16px">Notas asociadas</h2>
-    {% for n in notas %}<div><a href="{% url 'documento' n.pk %}">{{ n }}</a> · {{ n.total|clp }} · <span class="suave">{{ n.get_estado_display }}</span></div>{% endfor %}{% endif %}
   </div>
   <div class="panel">
     <h2>Pagos</h2>
@@ -175,6 +173,12 @@
     </form>
     {% endif %}
   </div>
+</div>
+{% endif %}
+{% if asociados.0 or asociados.1 %}
+<div class="panel">
+  <h2>Documentos asociados</h2>
+  {% include "core/_asociados.html" with viene_de=asociados.0 generados=asociados.1 con_acciones=False %}
 </div>
 {% endif %}
 {% endblock %}

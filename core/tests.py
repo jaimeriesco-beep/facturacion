@@ -768,3 +768,46 @@ class EliminarProductoTests(Base):
         linea = Linea.objects.get(documento=doc)
         self.assertEqual((linea.producto, linea.descripcion, Documento.objects.get(pk=doc.pk).total),
                          (None, "Albahaca", 2380))
+
+
+class AsociadosTests(Base):
+    def test_documentos_asociados_en_ambos_sentidos(self):
+        from .models import COTIZACION, GUIA
+        factura = self.factura(folio=10)
+        sola = self.factura(folio=11)
+        self.client.post(reverse("nota_nueva", args=[factura.pk, NOTA_CREDITO]))
+        nota = Documento.objects.get(tipo=NOTA_CREDITO)
+        guia = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=GUIA, ind_traslado=1)
+        Linea.objects.create(documento=guia, descripcion="Plantas", cantidad=1, precio=5000); guia.recalcular()
+        self.client.post(reverse("documento_emitir", args=[guia.pk]), {"folio": 3})
+        self.client.post(reverse("guia_facturar", args=[guia.pk]))
+        de_guia = Documento.objects.get(referencia=guia)
+        cot = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=COTIZACION)
+        Linea.objects.create(documento=cot, descripcion="x", cantidad=1, precio=100); cot.recalcular()
+        self.client.post(reverse("cotizacion_emitir", args=[cot.pk]))
+        self.client.post(reverse("cotizacion_facturar", args=[cot.pk]))
+        de_cot = Documento.objects.get(origen=cot)
+
+        self.assertEqual(factura.asociados(), ([], [nota]))
+        self.assertEqual(nota.asociados(), ([factura], []))
+        self.assertEqual(de_guia.asociados()[0], [guia])
+        self.assertEqual(de_cot.asociados()[0], [cot])
+        self.assertEqual(cot.asociados()[1], [de_cot])
+        # En el listado: botón con la cantidad, solo donde hay asociados.
+        r = self.client.get(reverse("documentos"))
+        self.assertContains(r, f'data-ver="/documentos/{factura.pk}/asociados/"')
+        self.assertContains(r, "Asociados (1)")
+        self.assertNotContains(r, f'/documentos/{sola.pk}/asociados/')
+        self.assertContains(self.client.get(reverse("cotizaciones")), f"/documentos/{cot.pk}/asociados/")
+        # Ventana y ficha.
+        r = self.client.get(reverse("documento_asociados", args=[factura.pk]))
+        self.assertContains(r, "Generados a partir de Factura N° 10")
+        self.assertContains(r, str(nota))
+        self.assertContains(r, "Crear un documento a partir de")
+        self.assertContains(self.client.get(reverse("documento_asociados", args=[nota.pk])), "Viene de")
+        r = self.client.get(reverse("documento", args=[guia.pk]))
+        self.assertContains(r, "Documentos asociados")
+        self.assertNotContains(r, "Crear un documento a partir de")
+        self.assertNotContains(self.client.get(reverse("documento", args=[sola.pk])), "Documentos asociados")
+        # La cotización no viaja al SII como referencia.
+        self.assertIsNone(de_cot.referencia)

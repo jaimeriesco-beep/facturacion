@@ -10,12 +10,14 @@ import segno
 from django.conf import settings
 from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import PasswordResetConfirmView, PasswordResetView
+from django.core.cache import cache
 from django.core.management import call_command
 from django.db import transaction
 from django.db.models import Max, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook, load_workbook
@@ -244,6 +246,41 @@ def dos_pasos(request):
         enlace = totp.provisioning_uri(name=request.user.username, issuer_name="Facturación")
         contexto.update(secreto=secreto, qr=segno.make(enlace, error="m").svg_data_uri(scale=5))
     return render(request, "registration/dos_pasos.html", contexto)
+
+
+# --- Recuperación de clave -----------------------------------------------------
+class RecuperarView(PasswordResetView):
+    """Envía por correo un enlace de un solo uso para definir una clave nueva."""
+    template_name = "registration/recuperar.html"
+    email_template_name = "registration/recuperar_correo.txt"
+    subject_template_name = "registration/recuperar_asunto.txt"
+    success_url = reverse_lazy("password_reset_done")
+    def get_context_data(self, **kwargs):
+        return super().get_context_data(**kwargs) | {"correo_configurado": settings.CORREO_CONFIGURADO}
+
+    def form_valid(self, form):
+        # Máximo 3 solicitudes por hora para un mismo correo. La respuesta es siempre la
+        # misma, exista o no el correo, para no revelar quién tiene cuenta.
+        llave = "recuperar:" + form.cleaned_data["email"].strip().lower()
+        pedidos = cache.get(llave, 0)
+        if not settings.CORREO_CONFIGURADO or pedidos >= 3:
+            return redirect(self.success_url)
+        cache.set(llave, pedidos + 1, 60 * 60)
+        try:
+            return super().form_valid(form)
+        except Exception:  # un fallo del proveedor de correo no debe mostrar un error técnico
+            return redirect(self.success_url)
+
+
+class NuevaClaveView(PasswordResetConfirmView):
+    template_name = "registration/recuperar_nueva.html"
+    success_url = reverse_lazy("login")
+
+    def form_valid(self, form):
+        respuesta = super().form_valid(form)
+        cache.delete("ingreso:" + form.user.username.lower())  # levanta un bloqueo por intentos
+        messages.success(self.request, "Clave cambiada. Ya puedes ingresar con la nueva.")
+        return respuesta
 
 
 # --- Usuarios -----------------------------------------------------------------

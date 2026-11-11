@@ -125,6 +125,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTHENTICATION_BACKENDS = ["core.auth.UsuarioOCorreo"]
 
+# Correo saliente (recuperación de clave). Sin configurar, la app lo indica en pantalla.
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+DEFAULT_FROM_EMAIL = os.environ.get("FACTURACION_CORREO_REMITENTE", "")
+CORREO_CONFIGURADO = bool(BREVO_API_KEY and DEFAULT_FROM_EMAIL)
+EMAIL_BACKEND = ("core.correo.BrevoBackend" if CORREO_CONFIGURADO
+                 else "django.core.mail.backends.console.EmailBackend")
+PASSWORD_RESET_TIMEOUT = 60 * 60  # el enlace para cambiar la clave dura una hora
+
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "inicio"
 LOGOUT_REDIRECT_URL = "login"

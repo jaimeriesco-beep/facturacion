@@ -1,0 +1,9 @@
+Hola{% if user.first_name %} {{ user.first_name }}{% endif %}:
+
+Recibimos una solicitud para cambiar la clave de tu usuario "{{ user.get_username }}" en la plataforma de facturación.
+
+Para definir una clave nueva, abre este enlace (dura una hora y sirve una sola vez):
+
+{{ protocol }}://{{ domain }}{% url 'password_reset_confirm' uidb64=uid token=token %}
+
+Si no pediste este cambio, ignora este mensaje: tu clave actual sigue funcionando.

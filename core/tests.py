@@ -582,3 +582,55 @@ class IngresoConCorreoTests(Base):
         self.client.logout()
         r = self.client.post(reverse("login"), {"username": "baja@ejemplo.cl", "password": "clave-segura-123"})
         self.assertEqual(r.status_code, 200)
+
+
+class RecuperarClaveTests(Base):
+    def test_sin_correo_configurado_lo_dice(self):
+        self.client.logout()
+        self.assertContains(self.client.get(reverse("login")), "¿Olvidaste tu clave?")
+        self.assertContains(self.client.get(reverse("password_reset")), "aún no está configurado")
+
+    @override_settings(CORREO_CONFIGURADO=True, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+                       DEFAULT_FROM_EMAIL="facturacion@ejemplo.cl")
+    def test_flujo_completo_por_correo(self):
+        from django.core import mail
+        from django.core.cache import cache
+        cache.clear()
+        get_user_model().objects.filter(username="jaime").update(email="jaime@ejemplo.cl")
+        self.client.logout()
+        r = self.client.post(reverse("password_reset"), {"email": "nadie@ejemplo.cl"})
+        self.assertRedirects(r, reverse("password_reset_done"))   # misma respuesta, sin correo
+        self.assertEqual(len(mail.outbox), 0)
+        for _ in range(5):                                       # tope de 3 por hora
+            self.client.post(reverse("password_reset"), {"email": "JAIME@ejemplo.cl"})
+        self.assertEqual(len(mail.outbox), 3)
+        self.assertEqual(mail.outbox[0].to, ["jaime@ejemplo.cl"])
+        enlace = re.search(r"https?://\S+", mail.outbox[0].body).group(0)
+        ruta = "/" + enlace.split("/", 3)[3]
+        for _ in range(5):                                       # usuario bloqueado por intentos
+            self.client.post(reverse("login"), {"username": "jaime", "password": "mala"})
+        r = self.client.get(ruta, follow=True)
+        self.assertContains(r, "Clave nueva")
+        r = self.client.post(r.request["PATH_INFO"], {"new_password1": "corta", "new_password2": "corta"})
+        self.assertEqual(r.status_code, 200)                     # clave débil: no pasa
+        r = self.client.post(r.request["PATH_INFO"], {
+            "new_password1": "clave-recuperada-2026", "new_password2": "clave-recuperada-2026"}, follow=True)
+        self.assertContains(r, "Clave cambiada")
+        r = self.client.post(reverse("login"), {"username": "jaime@ejemplo.cl", "password": "clave-recuperada-2026"})
+        self.assertRedirects(r, reverse("inicio"))               # entra, y el bloqueo se levantó
+        self.client.logout()
+        self.assertContains(self.client.get(ruta, follow=True), "ya se usó o venció")
+
+    def test_envio_por_brevo(self):
+        from django.core.mail import EmailMessage
+        from .correo import BrevoBackend
+        with override_settings(BREVO_API_KEY="llave-de-prueba", DEFAULT_FROM_EMAIL="facturacion@ejemplo.cl"), \
+                mock.patch("core.correo.requests.post") as post:
+            post.return_value.raise_for_status = lambda: None
+            enviados = BrevoBackend().send_messages([EmailMessage("Asunto", "Texto", to=["a@ejemplo.cl"])])
+        self.assertEqual(enviados, 1)
+        args, kw = post.call_args
+        self.assertEqual(args[0], "https://api.brevo.com/v3/smtp/email")
+        self.assertEqual(kw["headers"]["api-key"], "llave-de-prueba")
+        self.assertEqual(kw["json"]["to"], [{"email": "a@ejemplo.cl"}])
+        self.assertEqual(kw["json"]["sender"]["email"], "facturacion@ejemplo.cl")

@@ -1,0 +1,26 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nueva clave · Facturación</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body>
+<div class="login panel" style="max-width:400px">
+  <h1 style="margin-bottom:12px">Nueva clave</h1>
+  {% if validlink %}
+  <form method="post">{% csrf_token %}
+    <div class="campo" style="margin-bottom:12px"><label for="id_new_password1">Clave nueva</label>{{ form.new_password1 }}{{ form.new_password1.errors }}</div>
+    <div class="campo" style="margin-bottom:14px"><label for="id_new_password2">Repite la clave</label>{{ form.new_password2 }}{{ form.new_password2.errors }}</div>
+    <p class="ayuda">Al menos 12 caracteres, y que no sea una clave común.</p>
+    <button class="primario" type="submit" style="width:100%">Guardar clave</button>
+  </form>
+  {% else %}
+  <div class="aviso" style="margin-bottom:0">Este enlace ya se usó o venció. Pide uno nuevo.</div>
+  <p style="margin:14px 0 0;text-align:center"><a href="{% url 'password_reset' %}">Pedir otro enlace</a></p>
+  {% endif %}
+  <p style="margin:14px 0 0;text-align:center"><a href="{% url 'login' %}">Volver al ingreso</a></p>
+</div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Revisa tu correo · Facturación</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body>
+<div class="login panel" style="max-width:400px">
+  <h1 style="margin-bottom:12px">Revisa tu correo</h1>
+  <p style="margin-top:0">Si ese correo pertenece a un usuario, en unos minutos llegará un mensaje con el enlace para definir una clave nueva.</p>
+  <p class="suave">El enlace dura una hora. Si no llega, revisa la carpeta de correo no deseado o pídele a otro administrador que te asigne una clave desde Usuarios.</p>
+  <p style="margin:14px 0 0;text-align:center"><a href="{% url 'login' %}">Volver al ingreso</a></p>
+</div>
+</body>
+</html>

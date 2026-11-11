@@ -24,6 +24,11 @@ services:
       # Dominio propio desde el que se entra a la app.
       - key: FACTURACION_HOSTS
         value: facturacion.verdevertical.cl
+      # Correo para recuperar claves (cuenta de Brevo y remitente verificado en ella).
+      - key: BREVO_API_KEY
+        sync: false
+      - key: FACTURACION_CORREO_REMITENTE
+        sync: false
       # Primer usuario administrador: Render pide estos valores al crear el servicio.
       - key: FACTURACION_ADMIN_USUARIO
         sync: false

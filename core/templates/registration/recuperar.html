@@ -1,0 +1,24 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recuperar clave · Facturación</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body>
+<div class="login panel" style="max-width:400px">
+  <h1 style="margin-bottom:12px">Recuperar clave</h1>
+  {% if correo_configurado %}
+  <p class="suave" style="margin-top:0">Escribe el correo de tu usuario y te enviaremos un enlace para definir una clave nueva.</p>
+  <form method="post">{% csrf_token %}
+    <div class="campo" style="margin-bottom:14px"><label for="id_email">Correo</label>{{ form.email }}{{ form.email.errors }}</div>
+    <button class="primario" type="submit" style="width:100%">Enviar enlace</button>
+  </form>
+  {% else %}
+  <div class="aviso" style="margin-bottom:0">El envío de correos aún no está configurado en esta plataforma. Pídele a otro administrador que te asigne una clave nueva desde Usuarios.</div>
+  {% endif %}
+  <p style="margin:14px 0 0;text-align:center"><a href="{% url 'login' %}">Volver al ingreso</a></p>
+</div>
+</body>
+</html>

@@ -1066,3 +1066,53 @@ class CobranzaTests(Base):
         Pago.objects.create(documento=doc, monto=doc.total)
         r = self.client.get(reverse("cobranza_recordatorio", args=[doc.pk]))
         self.assertRedirects(r, reverse("cobranza"), fetch_redirect_response=False)
+
+
+class CobranzaFiltrosTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.vencida = self.factura(folio=11)
+        self.pronto = self.factura(folio=12)
+        self.al_dia = self.factura(folio=13)
+        for doc, dias in ((self.vencida, -10), (self.pronto, 3), (self.al_dia, 30)):
+            doc.fecha_vencimiento = date.today() + timedelta(days=dias)
+            doc.save()
+        self.otro = Cliente.objects.create(sociedad=self.soc, razon_social="Otro Cliente SpA", rut="76086428-5")
+        self.del_otro = self.factura(folio=14)
+        self.del_otro.cliente = self.otro
+        self.del_otro.fecha_vencimiento = date.today() - timedelta(days=2)
+        self.del_otro.save()
+
+    def mostradas(self, **params):
+        r = self.client.get(reverse("cobranza"), params)
+        return {d.pk for d in r.context["pendientes"]}
+
+    def test_filtra_por_varios_estados(self):
+        self.assertEqual(self.mostradas(estado=["vencida"]), {self.vencida.pk, self.del_otro.pk})
+        self.assertEqual(self.mostradas(estado=["vencida", "pronto"]),
+                         {self.vencida.pk, self.pronto.pk, self.del_otro.pk})
+        self.assertEqual(self.mostradas(estado=["al-dia"]), {self.al_dia.pk})
+
+    def test_filtra_por_varios_clientes_y_combina_con_estado(self):
+        self.assertEqual(self.mostradas(cliente=[self.otro.pk]), {self.del_otro.pk})
+        self.assertEqual(len(self.mostradas(cliente=[self.otro.pk, self.cli.pk])), 4)
+        self.assertEqual(self.mostradas(cliente=[self.cli.pk], estado=["vencida"]), {self.vencida.pk})
+
+    def test_marcar_varias_como_pagadas(self):
+        r = self.client.post(reverse("pago_marcar_varios"), {
+            "documentos": [self.vencida.pk, self.pronto.pk], "fecha": "2026-11-02",
+            "medio": "transferencia", "nota": "Lote", "volver": "/cobranza/?estado=vencida"})
+        self.assertRedirects(r, "/cobranza/?estado=vencida", fetch_redirect_response=False)
+        for doc in (self.vencida, self.pronto):
+            pago = doc.pagos.get()
+            self.assertEqual((pago.fecha, pago.medio, pago.nota, pago.monto),
+                             (date(2026, 11, 2), "transferencia", "Lote", doc.total))
+        self.assertFalse(self.al_dia.pagos.exists())
+        self.assertEqual(self.mostradas(), {self.al_dia.pk, self.del_otro.pk})
+
+    def test_varias_ignora_documentos_de_otra_sociedad_y_sin_saldo(self):
+        Pago.objects.create(documento=self.al_dia, monto=self.al_dia.total)
+        self.client.post(reverse("pago_marcar_varios"), {
+            "documentos": [self.al_dia.pk, self.pronto.pk, 99999], "medio": "cheque"})
+        self.assertEqual(self.al_dia.pagos.count(), 1)
+        self.assertEqual(self.pronto.pagos.get().fecha, date.today())

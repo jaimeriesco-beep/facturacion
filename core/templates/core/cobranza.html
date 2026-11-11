@@ -4,7 +4,7 @@
 {% block contenido %}
 <div class="titulo">
   <h1>Cobranza</h1>
-  <a class="boton" href="?formato=excel{% if cliente %}&cliente={{ cliente }}{% endif %}">Descargar Excel</a>
+  <a class="boton" href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&amp;{% endif %}formato=excel">Descargar Excel</a>
 </div>
 <div class="tarjetas">
   <div class="tarjeta"><div class="rotulo">Total por cobrar</div><div class="valor">{{ total|clp }}</div></div>
@@ -12,20 +12,31 @@
   <div class="tarjeta{% if not forloop.first and monto %} alerta{% endif %}"><div class="rotulo">{{ nombre }}</div><div class="valor">{{ monto|clp }}</div></div>
   {% endfor %}
 </div>
-<form class="filtros" method="get">
-  <select name="cliente" onchange="this.form.submit()">
-    <option value="">Todos los clientes</option>
-    {% for c in clientes %}<option value="{{ c.pk }}" {% if cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c }}</option>{% endfor %}
-  </select>
-  <span class="leyenda-plazo suave"><span class="plazo p-al-dia">Al día</span><span class="plazo p-pronto">Vence en {{ dias_aviso }} días o menos</span><span class="plazo p-vencida">Vencida</span></span>
+<form class="filtros filtros-cobranza" method="get" id="filtros">
+  <fieldset class="chips">
+    <legend>Estado</legend>
+    {% for clave, nombre, n in estados %}<label class="chip c-{{ clave }}" title="{% if clave == 'pronto' %}Vencen en {{ dias_aviso }} días o menos{% elif clave == 'al-dia' %}Vencen en más de {{ dias_aviso }} días{% else %}Ya pasó la fecha de vencimiento{% endif %}"><input type="checkbox" name="estado" value="{{ clave }}" {% if clave in estados_sel %}checked{% endif %}><span>{{ nombre }}</span><span class="cuenta">{{ n }}</span></label>{% endfor %}
+  </fieldset>
+  <details class="selector-clientes" id="selector-clientes">
+    <summary>{% if nombres_sel %}{% if nombres_sel|length == 1 %}{{ nombres_sel.0|truncatechars:34 }}{% else %}{{ nombres_sel|length }} clientes{% endif %}{% else %}Todos los clientes{% endif %}</summary>
+    <div class="selector-panel">
+      <input type="search" placeholder="Buscar cliente" aria-label="Buscar cliente" data-buscar-cliente>
+      <div class="selector-lista">
+        {% for c in clientes %}<label><input type="checkbox" name="cliente" value="{{ c.pk }}" {% if c.pk in clientes_sel %}checked{% endif %}> {{ c }}</label>{% endfor %}
+      </div>
+      <div class="acciones"><button class="primario" type="submit">Aplicar</button><button type="button" data-ninguno>Quitar todos</button></div>
+    </div>
+  </details>
+  {% if filtrado %}<a class="limpiar" href="{% url 'cobranza' %}">Limpiar filtros</a>{% endif %}
 </form>
 <div class="panel tabla-panel">
   {% if pendientes %}
   <table class="tabla-cobranza">
-    <thead><tr><th>Cliente</th><th>Documento</th><th>Emisión</th><th>Vencimiento</th><th>Días al vencimiento</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th><th class="c-accion">Acciones</th></tr></thead>
+    <thead><tr><th class="c-sel"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todas"></th><th>Cliente</th><th>Documento</th><th>Emisión</th><th>Vencimiento</th><th>Días al vencimiento</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th><th class="c-accion">Acciones</th></tr></thead>
     <tbody>
     {% for d in pendientes %}{% with p=d.plazo %}
       <tr>
+        <td class="c-sel"><input type="checkbox" class="sel-factura" value="{{ d.pk }}" data-saldo="{{ d.saldo }}" data-documento="{{ d }}" aria-label="Seleccionar {{ d }}"></td>
         <td data-rotulo="Cliente">{{ d.cliente }}</td>
         <td data-rotulo="Documento"><a href="{% url 'documento' d.pk %}">{{ d }}</a>{% if d.estado_cobro == 'parcial' %} <span class="etiqueta e-parcial">Abono</span>{% endif %}</td>
         <td data-rotulo="Emisión">{{ d.fecha_emision|date:"d/m/Y" }}</td>
@@ -43,12 +54,19 @@
     {% endwith %}{% endfor %}
     </tbody>
   </table>
+  {% elif filtrado %}<div class="vacio">Ninguna factura pendiente coincide con los filtros. <a href="{% url 'cobranza' %}">Limpiar filtros</a></div>
   {% else %}<div class="vacio">No hay facturas pendientes de cobro.</div>{% endif %}
+</div>
+<div class="barra-seleccion" id="barra-seleccion" hidden>
+  <span><strong id="sel-cuenta"></strong> · saldo <strong id="sel-saldo"></strong></span>
+  <button type="button" class="primario" id="sel-pagar">Marcar como pagadas</button>
+  <button type="button" id="sel-quitar">Quitar selección</button>
 </div>
 
 <dialog id="marcar-pagado" class="ventana ventana-chica" aria-labelledby="pagado-titulo">
   <form method="post" id="pagado-form">{% csrf_token %}
     <input type="hidden" name="volver" value="{{ request.get_full_path }}">
+    <div id="pagado-ids"></div>
     <div class="ventana-barra"><strong id="pagado-titulo">Marcar como pagado</strong><button type="button" data-cerrar aria-label="Cerrar">Cerrar ✕</button></div>
     <div class="ventana-cuerpo">
       <p id="pagado-resumen" style="margin-top:0"></p>
@@ -63,22 +81,64 @@
 {% endblock %}
 {% block scripts %}
 <script>
-// «Marcar como pagado»: registra un pago por el saldo completo, con fecha opcional.
 (function () {
+  const clp = (n) => "$" + Math.round(n).toLocaleString("es-CL");
+  // Filtros: los estados se aplican al marcarlos; los clientes con «Aplicar».
+  const filtros = document.getElementById("filtros");
+  filtros.querySelectorAll("input[name=estado]").forEach((c) => c.addEventListener("change", () => filtros.submit()));
+  const buscar = filtros.querySelector("[data-buscar-cliente]");
+  buscar.addEventListener("input", () => {
+    const q = buscar.value.trim().toLowerCase();
+    filtros.querySelectorAll(".selector-lista label").forEach((l) => { l.hidden = q && !l.textContent.toLowerCase().includes(q); });
+  });
+  buscar.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+  filtros.querySelector("[data-ninguno]").addEventListener("click", () => {
+    filtros.querySelectorAll("input[name=cliente]").forEach((c) => { c.checked = false; });
+  });
+  const selector = document.getElementById("selector-clientes");
+  document.addEventListener("click", (e) => { if (selector.open && !selector.contains(e.target)) selector.open = false; });
+
+  // Ventana «Marcar como pagado»: una factura o varias.
   const ventana = document.getElementById("marcar-pagado"), form = document.getElementById("pagado-form");
+  const titulo = document.getElementById("pagado-titulo"), resumen = document.getElementById("pagado-resumen");
+  const ids = document.getElementById("pagado-ids"), confirmar = form.querySelector("button.primario");
   const fecha = form.querySelector("input[type=date]");
   if (fecha) fecha.max = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  document.querySelectorAll("[data-pagar]").forEach((b) => b.addEventListener("click", () => {
-    form.action = b.dataset.pagar;
-    form.reset();
-    const r = document.getElementById("pagado-resumen");
-    r.textContent = b.dataset.documento + " · " + b.dataset.cliente;
-    r.append(document.createElement("br"));
-    const s = document.createElement("strong"); s.textContent = "Saldo a pagar: " + b.dataset.saldo; r.append(s);
+  function abrir(accion, tituloTexto, lineas, total, n) {
+    form.action = accion; form.reset(); ids.innerHTML = ""; resumen.innerHTML = "";
+    titulo.textContent = tituloTexto;
+    lineas.forEach((t) => { resumen.append(t, document.createElement("br")); });
+    const s = document.createElement("strong"); s.textContent = (n > 1 ? "Saldo total: " : "Saldo a pagar: ") + total; resumen.append(s);
+    confirmar.textContent = n > 1 ? "Confirmar " + n + " pagos" : "Confirmar pago";
     ventana.showModal();
-  }));
+  }
+  document.querySelectorAll("[data-pagar]").forEach((b) => b.addEventListener("click", () =>
+    abrir(b.dataset.pagar, "Marcar como pagado", [b.dataset.documento + " · " + b.dataset.cliente], b.dataset.saldo, 1)));
   ventana.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => ventana.close()));
   ventana.addEventListener("click", (e) => { if (e.target === ventana) ventana.close(); });
+
+  // Selección múltiple.
+  const todas = document.getElementById("sel-todas"), barra = document.getElementById("barra-seleccion");
+  const casillas = [...document.querySelectorAll(".sel-factura")];
+  const marcadas = () => casillas.filter((c) => c.checked);
+  function actualizar() {
+    const m = marcadas(), total = m.reduce((a, c) => a + Number(c.dataset.saldo), 0);
+    barra.hidden = !m.length;
+    document.getElementById("sel-cuenta").textContent = m.length + (m.length === 1 ? " factura seleccionada" : " facturas seleccionadas");
+    document.getElementById("sel-saldo").textContent = clp(total);
+    casillas.forEach((c) => c.closest("tr").classList.toggle("seleccionada", c.checked));
+    if (todas) { todas.checked = m.length && m.length === casillas.length; todas.indeterminate = m.length > 0 && m.length < casillas.length; }
+  }
+  casillas.forEach((c) => c.addEventListener("change", actualizar));
+  if (todas) todas.addEventListener("change", () => { casillas.forEach((c) => { c.checked = todas.checked; }); actualizar(); });
+  document.getElementById("sel-quitar").addEventListener("click", () => { casillas.forEach((c) => { c.checked = false; }); actualizar(); });
+  document.getElementById("sel-pagar").addEventListener("click", () => {
+    const m = marcadas(), total = m.reduce((a, c) => a + Number(c.dataset.saldo), 0);
+    const lineas = m.length > 6 ? [...m.slice(0, 5).map((c) => c.dataset.documento), "y " + (m.length - 5) + " más"] : m.map((c) => c.dataset.documento);
+    abrir("{% url 'pago_marcar_varios' %}", "Marcar " + m.length + " facturas como pagadas", lineas, clp(total), m.length);
+    m.forEach((c) => { const i = document.createElement("input"); i.type = "hidden"; i.name = "documentos"; i.value = c.value; ids.append(i); });
+  });
+  actualizar();
 })();
 </script>
 {% endblock %}

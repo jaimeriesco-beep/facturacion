@@ -49,6 +49,7 @@ urlpatterns = [
     path("sociedades/<int:pk>/logo.png", v.sociedad_logo, name="sociedad_logo"),
     path("cobranza/<int:pk>/recordatorio/", v.documento_correo, {"recordatorio": True},
          name="cobranza_recordatorio"),
+    path("cobranza/pagar/", v.pago_marcar, name="pago_marcar_varios"),
     path("documentos/<int:pk>/pagado/", v.pago_marcar, name="pago_marcar"),
     path("pagos/<int:pk>/eliminar/", v.pago_eliminar, name="pago_eliminar"),
     path("cobranza/", v.cobranza, name="cobranza"),

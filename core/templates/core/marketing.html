@@ -35,17 +35,22 @@
   </div>
   {% if sin_correo %}<p class="aviso" style="margin:0 10px 8px">{{ sin_correo }} cliente{{ sin_correo|pluralize }} marcado{{ sin_correo|pluralize }} no tiene{{ sin_correo|pluralize:"n" }} correo de contacto comercial: no recibirán el correo hasta que lo completes.</p>{% endif %}
   {% if clientes %}
-  <table>
+  <div class="buscador-tabla">
+    <input type="search" id="buscar-cliente" placeholder="Buscar empresa por nombre, RUT, contacto o correo" aria-label="Buscar empresa" autocomplete="off">
+    <span class="suave" id="cuenta-marcados" aria-live="polite"></span>
+  </div>
+  <table id="tabla-marketing">
     <thead><tr><th style="width:40px"></th><th>Cliente</th><th>Contacto comercial</th><th>Correo</th></tr></thead>
     <tbody>
     {% for c in clientes %}
-      <tr>
+      <tr data-buscar="{{ c.razon_social|lower }} {{ c.nombre_fantasia|lower }} {{ c.rut }} {{ c.rut_formateado }} {{ c.comercial_nombre|lower }} {{ c.comercial_email|lower }}">
         <td><input type="checkbox" name="clientes" value="{{ c.pk }}" id="c{{ c.pk }}" {% if c.recibe_gracias %}checked{% endif %}></td>
         <td><label for="c{{ c.pk }}">{{ c }}</label></td>
         <td>{{ c.comercial_nombre|default:"—" }}</td>
         <td>{% if c.comercial_email %}{{ c.comercial_email }}{% else %}<a href="{% url 'cliente_editar' c.pk %}" class="suave">Falta correo</a>{% endif %}</td>
       </tr>
     {% endfor %}
+    <tr id="sin-resultados" hidden><td colspan="4" class="vacio">Ninguna empresa coincide con la búsqueda.</td></tr>
     </tbody>
   </table>
   {% else %}<div class="vacio">Aún no hay clientes.</div>{% endif %}
@@ -58,9 +63,40 @@
 </form>
 <script>
 (function () {
-  document.querySelectorAll("[data-marcar]").forEach((b) => b.addEventListener("click", () => {
-    document.querySelectorAll('input[name="clientes"]').forEach((c) => { c.checked = b.dataset.marcar === "1"; });
+  const filas = [...document.querySelectorAll("#tabla-marketing tbody tr[data-buscar]")];
+  const casillas = filas.map((f) => f.querySelector('input[name="clientes"]'));
+  const buscar = document.getElementById("buscar-cliente");
+  const normalizar = (t) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.\-]/g, "");
+  const botones = document.querySelectorAll("[data-marcar]");
+  function contar() {
+    const cuenta = document.getElementById("cuenta-marcados");
+    if (cuenta) cuenta.textContent = casillas.filter((c) => c.checked).length + " de " + casillas.length + " marcados";
+  }
+  function filtrar() {
+    const q = normalizar(buscar.value.trim());
+    let visibles = 0;
+    filas.forEach((f) => { f.hidden = q && !normalizar(f.dataset.buscar).includes(q); if (!f.hidden) visibles++; });
+    document.getElementById("sin-resultados").hidden = visibles > 0;
+    botones.forEach((b) => { b.textContent = (b.dataset.marcar === "1" ? "Marcar " : "Desmarcar ") + (q ? "resultados" : "todos"); });
+  }
+  // «Marcar todos» actúa solo sobre las filas visibles cuando hay una búsqueda.
+  botones.forEach((b) => b.addEventListener("click", () => {
+    filas.forEach((f, i) => { if (!f.hidden) casillas[i].checked = b.dataset.marcar === "1"; });
+    contar();
   }));
+  if (buscar) {
+    buscar.addEventListener("input", filtrar);
+    buscar.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {          // Enter marca la única coincidencia, sin enviar el formulario
+        e.preventDefault();
+        const visibles = filas.filter((f) => !f.hidden);
+        if (visibles.length === 1) { const c = visibles[0].querySelector("input"); c.checked = !c.checked; contar(); }
+      }
+      if (e.key === "Escape") { buscar.value = ""; filtrar(); }
+    });
+  }
+  casillas.forEach((c) => c.addEventListener("change", contar));
+  contar();
   const interruptor = document.querySelector('input[name="gracias_activo"]');
   interruptor.addEventListener("change", () => {
     interruptor.nextElementSibling.textContent = interruptor.checked ? "Activado" : "Desactivado";

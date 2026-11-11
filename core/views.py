@@ -17,7 +17,7 @@ from django.core.mail import EmailMessage
 from django.core.management import call_command
 from django.db import transaction
 from django.db.models import Max, Q, Sum
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -1030,26 +1030,46 @@ def pago_nuevo(request, pk):
 
 @require_POST
 @con_sociedad
-def pago_marcar(request, pk):
-    """Botón «Marcar como pagado» de cobranza: registra un pago por el saldo completo."""
-    doc = _documento(request, pk)
+def pago_marcar(request, pk=None):
+    """«Marcar como pagado» de cobranza: registra un pago por el saldo completo.
+
+    Con pk salda una factura; sin pk salda todas las marcadas en la lista
+    (campo «documentos»), con la misma fecha, medio y nota.
+    """
     volver = request.POST.get("volver", "")
     destino = volver if volver.startswith("/") and not volver.startswith("//") else reverse("cobranza")
+    ids = [pk] if pk else [int(i) for i in request.POST.getlist("documentos") if i.isdigit()]
+    if not ids:
+        messages.error(request, "Marca al menos una factura.")
+        return redirect(destino)
     form = MarcarPagadoForm(request.POST)
-    if not doc.es_factura or doc.estado != Documento.EMITIDO:
-        messages.error(request, "Solo se registran pagos sobre facturas emitidas.")
-    elif doc.saldo <= 0:
-        messages.info(request, f"{doc} ya no tiene saldo pendiente.")
-    elif form.is_valid():
-        datos = form.cleaned_data
-        Pago.objects.create(documento=doc, monto=doc.saldo, fecha=datos["fecha"],
-                            medio=datos["medio"], nota=datos["nota"])
-        messages.success(request, f"{doc} marcada como pagada el {datos['fecha']:%d/%m/%Y} "
-                                  f"({dict(Pago.MEDIOS)[datos['medio']].lower()}).")
-    else:
+    if not form.is_valid():
         for errores in form.errors.values():
             for e in errores:
                 messages.error(request, e)
+        return redirect(destino)
+    datos = form.cleaned_data
+    docs = list(request.sociedad.documentos.filter(pk__in=ids).select_related("cliente"))
+    if pk and not docs:
+        raise Http404
+    pagadas, omitidas, total = [], [], 0
+    with transaction.atomic():
+        for doc in docs:
+            if not doc.es_factura or doc.estado != Documento.EMITIDO or doc.saldo <= 0:
+                omitidas.append(doc)
+                continue
+            total += doc.saldo
+            Pago.objects.create(documento=doc, monto=doc.saldo, fecha=datos["fecha"],
+                                medio=datos["medio"], nota=datos["nota"])
+            pagadas.append(doc)
+    medio = dict(Pago.MEDIOS)[datos["medio"]].lower()
+    if len(pagadas) == 1:
+        messages.success(request, f"{pagadas[0]} marcada como pagada el {datos['fecha']:%d/%m/%Y} ({medio}).")
+    elif pagadas:
+        messages.success(request, f"{len(pagadas)} facturas marcadas como pagadas el {datos['fecha']:%d/%m/%Y} "
+                                  f"({medio}), por {formatear_clp(total)} en total.")
+    for doc in omitidas:
+        messages.info(request, f"{doc} no se marcó: no tiene saldo pendiente o no está emitida.")
     return redirect(destino)
 
 
@@ -1072,15 +1092,25 @@ def _tramo(dias):
     return min((dias - 1) // 30 + 1, 4)
 
 
+ESTADOS_PLAZO = [("vencida", "Vencidas"), ("pronto", "Por vencer"), ("al-dia", "Al día")]
+
+
 @con_sociedad
 def cobranza(request):
     qs = (request.sociedad.documentos.por_cobrar().select_related("cliente")
           .order_by("fecha_vencimiento", "id"))
     pendientes = list(qs)
     con_deuda = sorted({d.cliente for d in pendientes}, key=lambda c: str(c).lower())
-    cliente = request.GET.get("cliente", "")
-    if cliente.isdigit():
-        pendientes = [d for d in pendientes if d.cliente_id == int(cliente)]
+    # Filtros combinables: varios estados y varios clientes a la vez.
+    estados = [e for e in request.GET.getlist("estado") if e in dict(ESTADOS_PLAZO)]
+    clientes_sel = {int(c) for c in request.GET.getlist("cliente") if c.isdigit()}
+    def estado(d):
+        return "al-dia" if d.plazo[0] == "sin" else d.plazo[0]
+    if clientes_sel:
+        pendientes = [d for d in pendientes if d.cliente_id in clientes_sel]
+    conteo = {clave: sum(1 for d in pendientes if estado(d) == clave) for clave, _ in ESTADOS_PLAZO}
+    if estados:
+        pendientes = [d for d in pendientes if estado(d) in estados]
     if request.GET.get("formato") == "excel":
         return excel(f"cobranza_{hoy():%Y%m%d}", [
             "Cliente", "RUT", "Documento", "Folio", "Emisión", "Vencimiento", "Días vencido",
@@ -1095,8 +1125,10 @@ def cobranza(request):
         tramos[_tramo(d.dias_vencido)] += d.saldo
     return render(request, "core/cobranza.html", {
         "pendientes": pendientes, "tramos": list(zip(TRAMOS, tramos)),
-        "total": sum(tramos), "cliente": cliente,
-        "clientes": con_deuda, "pagado_form": MarcarPagadoForm(), "dias_aviso": DIAS_AVISO})
+        "total": sum(tramos), "clientes": con_deuda, "clientes_sel": clientes_sel,
+        "estados": [(c, n, conteo[c]) for c, n in ESTADOS_PLAZO], "estados_sel": estados, "filtrado": bool(estados or clientes_sel),
+        "nombres_sel": [str(c) for c in con_deuda if c.pk in clientes_sel],
+        "pagado_form": MarcarPagadoForm(), "dias_aviso": DIAS_AVISO})
 
 
 # --- Facturación recurrente ---------------------------------------------------

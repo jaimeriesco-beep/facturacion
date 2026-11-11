@@ -101,6 +101,7 @@
     <h2>Documento</h2>
     <dl class="datos">
       <dt>Tipo</dt><dd>{{ doc.get_tipo_display }}{% if not doc.es_cotizacion %} ({{ doc.tipo }}){% endif %}</dd>
+      {% if doc.gracias_enviado %}<dt>Agradecimiento</dt><dd>Enviado el {{ doc.gracias_enviado|date:"d/m/Y H:i" }}</dd>{% endif %}
       <dt>Emisión</dt><dd>{{ doc.fecha_emision|date:"d/m/Y" }}</dd>
       {% if doc.es_factura %}<dt>Vencimiento</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
       {% if doc.es_cotizacion %}<dt>Válida hasta</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}

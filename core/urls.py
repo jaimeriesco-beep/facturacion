@@ -49,4 +49,5 @@ urlpatterns = [
     path("recurrentes/<int:pk>/", v.recurrente_form, name="recurrente_editar"),
     path("recurrentes/generar/", v.recurrentes_generar, name="recurrentes_generar"),
     path("reportes/", v.reportes, name="reportes"),
+    path("marketing/", v.marketing_vista, name="marketing"),
 ]

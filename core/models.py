@@ -71,6 +71,17 @@ class Sociedad(ConRut):
         help_text="En certificación: la fecha en que el SII aceptó la postulación.")
     resolucion_numero = models.PositiveIntegerField(
         "Número de resolución SII", default=0, help_text="En certificación es 0.")
+    # Marketing: correo de agradecimiento al emitir una factura.
+    MENSAJE_GRACIAS = (
+        "Hola {contacto}:\n\n"
+        "Gracias por tu compra y por preferirnos. Te confirmamos que emitimos la "
+        "{documento} por {total}.\n\n"
+        "Cualquier consulta, estamos para ayudarte.\n\n"
+        "Saludos,\n{sociedad}")
+    gracias_activo = models.BooleanField("Enviar agradecimiento al emitir facturas", default=False)
+    gracias_asunto = models.CharField("Asunto", max_length=120,
+                                      default="Gracias por tu compra y por preferirnos")
+    gracias_mensaje = models.TextField("Mensaje", default=MENSAJE_GRACIAS)
     ambiente = models.CharField(
         "Ambiente SII", max_length=13, default=CERTIFICACION,
         choices=[(CERTIFICACION, "Certificación (pruebas)"), (PRODUCCION, "Producción (real)")],
@@ -104,6 +115,9 @@ class Cliente(ConRut):
     # Personas de contacto por rol. Con contacto_unico, la persona «comercial» cumple los tres.
     ROLES = [("comercial", "Contacto comercial"), ("facturacion", "Contacto de facturación"),
              ("cobranza", "Contacto de cobranza")]
+    recibe_gracias = models.BooleanField(
+        "Recibe el agradecimiento por compra", default=True,
+        help_text="Se gestiona en Marketing.")
     contacto_unico = models.BooleanField(
         "Una sola persona para todo", default=True,
         help_text="Desmárcalo para indicar personas distintas para lo comercial, "
@@ -240,6 +254,7 @@ class Documento(models.Model):
         help_text="Solo durante la certificación. Ej.: CASO 4102547-1")
     xml_firmado = models.BinaryField(null=True, blank=True, editable=False)
     timbrado = models.DateTimeField(null=True, blank=True, editable=False)
+    gracias_enviado = models.DateTimeField(null=True, blank=True, editable=False)
     envio = models.ForeignKey("Envio", null=True, blank=True, on_delete=models.SET_NULL,
                               related_name="documentos", editable=False)
     recurrente = models.ForeignKey(

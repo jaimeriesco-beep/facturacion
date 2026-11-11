@@ -666,3 +666,80 @@ class ContactosTests(Base):
         self.assertEqual((self.cli.facturacion_nombre, self.cli.cobranza_email), ("", ""))
         r = self.client.post(url, {**self.DATOS, "cobranza_email": "no-es-correo"})
         self.assertContains(r, "correo electrónico válid")
+
+
+@override_settings(CORREO_CONFIGURADO=True, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+                   DEFAULT_FROM_EMAIL="facturacion@ejemplo.cl")
+class MarketingTests(Base):
+    def setUp(self):
+        super().setUp()
+        Cliente.objects.filter(pk=self.cli.pk).update(comercial_nombre="Ana", comercial_email="ana@ejemplo.cl")
+        Sociedad.objects.filter(pk=self.soc.pk).update(email="contacto@verdevertical.cl")
+
+    def test_agradecimiento_opcional_por_sociedad_y_por_cliente(self):
+        from django.core import mail
+        self.factura(folio=1)
+        self.assertEqual(len(mail.outbox), 0)                       # desactivado por defecto
+        otro = Cliente.objects.create(sociedad=self.soc, rut="12345678-5", razon_social="Otro",
+                                      comercial_email="otro@ejemplo.cl")
+        r = self.client.post(reverse("marketing"), {
+            "accion": "guardar", "gracias_activo": "on", "gracias_asunto": "Gracias, {cliente}",
+            "gracias_mensaje": "Hola {contacto}: gracias por la {documento} de {total}. {sociedad}",
+            "clientes": [self.cli.pk]})
+        self.assertRedirects(r, reverse("marketing"))
+        self.assertFalse(Cliente.objects.get(pk=otro.pk).recibe_gracias)
+        doc = self.factura(folio=2)
+        self.assertEqual(len(mail.outbox), 1)
+        m = mail.outbox[0]
+        self.assertEqual((m.to, m.subject, m.reply_to), (["ana@ejemplo.cl"], "Gracias, Cliente Uno",
+                                                         ["contacto@verdevertical.cl"]))
+        self.assertIn("Hola Ana: gracias por la Factura N° 2 de $119.000. Verde Vertical", m.body)
+        self.assertIn("Verde Vertical <", m.from_email)
+        self.assertIsNotNone(Documento.objects.get(pk=doc.pk).gracias_enviado)
+        # No se repite al corregir y volver a emitir.
+        self.client.post(reverse("documento_reabrir", args=[doc.pk]))
+        self.client.post(reverse("documento_emitir", args=[doc.pk]), {"folio": 3})
+        self.assertEqual(len(mail.outbox), 1)
+        # Cliente excluido: no recibe.
+        d = Documento.objects.create(sociedad=self.soc, cliente=otro)
+        Linea.objects.create(documento=d, descripcion="x", cantidad=1, precio=1000); d.recalcular()
+        self.client.post(reverse("documento_emitir", args=[d.pk]), {"folio": 4})
+        self.assertEqual(len(mail.outbox), 1)
+        # Sin correo comercial: la factura se emite y se avisa.
+        Cliente.objects.filter(pk=self.cli.pk).update(comercial_email="")
+        d = self.factura()
+        r = self.client.post(reverse("documento_emitir", args=[d.pk]), {"folio": 5}, follow=True)
+        self.assertContains(r, "no tiene correo de contacto comercial")
+        self.assertEqual(Documento.objects.get(pk=d.pk).estado, Documento.EMITIDO)
+        self.assertContains(self.client.get(reverse("marketing")), "Falta correo")
+
+    def test_no_se_envia_en_otros_documentos_y_falla_sin_romper(self):
+        from django.core import mail
+        Sociedad.objects.filter(pk=self.soc.pk).update(gracias_activo=True)
+        cot = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=1)
+        Linea.objects.create(documento=cot, descripcion="x", cantidad=1, precio=1000); cot.recalcular()
+        self.client.post(reverse("cotizacion_emitir", args=[cot.pk]))
+        self.assertEqual(len(mail.outbox), 0)
+        with mock.patch("core.marketing.EmailMessage.send", side_effect=RuntimeError("caído")):
+            d = self.factura()
+            r = self.client.post(reverse("documento_emitir", args=[d.pk]), {"folio": 7}, follow=True)
+        self.assertContains(r, "La factura quedó emitida igual")
+        self.assertEqual(Documento.objects.get(pk=d.pk).estado, Documento.EMITIDO)
+
+    def test_correo_de_prueba(self):
+        from django.core import mail
+        r = self.client.post(reverse("marketing"), {"accion": "prueba"}, follow=True)
+        self.assertContains(r, "no tiene correo")
+        get_user_model().objects.filter(username="jaime").update(email="jaime@ejemplo.cl")
+        r = self.client.post(reverse("marketing"), {"accion": "prueba"}, follow=True)
+        self.assertContains(r, "Correo de prueba enviado")
+        self.assertTrue(mail.outbox[0].subject.startswith("[Prueba] "))
+
+    def test_brevo_usa_nombre_de_la_sociedad_y_responder_a(self):
+        from django.core.mail import EmailMessage
+        from .correo import BrevoBackend
+        m = EmailMessage("A", "B", to=["x@ejemplo.cl"], from_email="Verde Vertical <f@ejemplo.cl>",
+                         reply_to=["contacto@verdevertical.cl"])
+        cuerpo = BrevoBackend._cuerpo(m)
+        self.assertEqual(cuerpo["sender"], {"name": "Verde Vertical", "email": "facturacion@ejemplo.cl"})
+        self.assertEqual(cuerpo["replyTo"], {"email": "contacto@verdevertical.cl"})

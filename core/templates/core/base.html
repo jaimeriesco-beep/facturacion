@@ -23,6 +23,8 @@
     <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos y servicios</span></a>
     <div class="seccion">Compras</div>
     <span class="pronto"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#compras"/></svg><span>Próximamente</span></span>
+    <div class="seccion">Marketing</div>
+    <a href="{% url 'marketing' %}" class="{% if u == 'marketing' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#marketing"/></svg><span>Marketing</span></a>
     <div class="seccion">Informes</div>
     <a href="{% url 'reportes' %}" class="{% if u == 'reportes' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#reportes"/></svg><span>Reportes</span></a>
     <div class="seccion">Configuración</div>

@@ -18,11 +18,13 @@ from django.db.models import Max, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
+from . import marketing
 from .dte import servicio
 from .dte.motor import ErrorDTE
 from .dte.pdf import generar_pdf
@@ -496,6 +498,7 @@ def documento_emitir(request, pk):
         doc.fecha_vencimiento = doc.fecha_emision + timedelta(days=doc.cliente.dias_pago)
     doc.save()
     messages.success(request, f"{doc} registrada como emitida.")
+    _agradecer(request, doc)
     return redirect("documento", pk=pk)
 
 
@@ -630,6 +633,57 @@ def cotizacion_facturar(request, pk):
     return redirect("documento_editar", pk=factura.pk)
 
 
+# --- Marketing ----------------------------------------------------------------
+def _agradecer(request, doc):
+    enviado, aviso = marketing.agradecer(doc)
+    if aviso:
+        (messages.success if enviado else messages.warning)(request, aviso)
+
+
+@con_sociedad
+def marketing_vista(request):
+    soc = request.sociedad
+    clientes = soc.clientes.filter(activo=True).order_by("nombre_fantasia", "razon_social")
+    if request.method == "POST":
+        accion = request.POST.get("accion")
+        if accion == "guardar":
+            soc.gracias_activo = request.POST.get("gracias_activo") == "on"
+            soc.gracias_asunto = request.POST.get("gracias_asunto", "").strip()[:120] or \
+                Sociedad._meta.get_field("gracias_asunto").default
+            soc.gracias_mensaje = request.POST.get("gracias_mensaje", "").strip() or \
+                Sociedad.MENSAJE_GRACIAS
+            soc.save(update_fields=["gracias_activo", "gracias_asunto", "gracias_mensaje"])
+            elegidos = {int(x) for x in request.POST.getlist("clientes") if x.isdigit()}
+            clientes.filter(pk__in=elegidos).update(recibe_gracias=True)
+            clientes.exclude(pk__in=elegidos).update(recibe_gracias=False)
+            messages.success(request, "Configuración de marketing guardada.")
+        elif accion == "prueba":
+            destino = request.user.email
+            if not destino:
+                messages.error(request, "Tu usuario no tiene correo: agrégalo en Usuarios.")
+            elif not settings.CORREO_CONFIGURADO:
+                messages.error(request, "El envío de correos no está configurado.")
+            else:
+                ejemplo = clientes.exclude(comercial_email="").first() or clientes.first() or \
+                    Cliente(sociedad=soc, razon_social="Cliente de ejemplo")
+                asunto, mensaje = marketing.redactar(soc, ejemplo, "Factura N° 123", 119000)
+                try:
+                    marketing.enviar_correo(soc, destino, "[Prueba] " + asunto, mensaje)
+                    messages.success(request, f"Correo de prueba enviado a {destino}.")
+                except Exception:
+                    messages.error(request, "No se pudo enviar el correo de prueba.")
+        return redirect("marketing")
+    ejemplo = clientes.exclude(comercial_email="").first() or clientes.first()
+    vista_previa = (marketing.redactar(soc, ejemplo, "Factura N° 123", 119000)
+                    if ejemplo else None)
+    return render(request, "core/marketing.html", {
+        "clientes": clientes, "correo_configurado": settings.CORREO_CONFIGURADO,
+        "vista_previa": vista_previa, "ejemplo": ejemplo,
+        "sin_correo": sum(1 for c in clientes if c.recibe_gracias and not c.contacto("comercial")["email"]),
+        "enviados_mes": soc.documentos.filter(
+            gracias_enviado__gte=timezone.now().replace(day=1, hour=0, minute=0)).count()})
+
+
 # --- Emisión electrónica propia ------------------------------------------------
 def _intentar(request, accion, exito):
     """Ejecuta una operación del motor y muestra el resultado como mensaje."""
@@ -646,8 +700,9 @@ def _intentar(request, accion, exito):
 @con_sociedad
 def documento_timbrar(request, pk):
     doc = _documento(request, pk)
-    _intentar(request, lambda: servicio.emitir(doc),
-              lambda d: f"{d} timbrada y firmada. Ya puedes descargarla y enviarla al SII.")
+    if _intentar(request, lambda: servicio.emitir(doc),
+                 lambda d: f"{d} timbrada y firmada. Ya puedes descargarla y enviarla al SII."):
+        _agradecer(request, doc)
     return redirect("documento", pk=pk)
 
 

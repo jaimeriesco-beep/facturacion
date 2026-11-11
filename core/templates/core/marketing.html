@@ -1,0 +1,70 @@
+{% extends "core/base.html" %}
+{% block titulo %}Marketing{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Marketing</h1></div>
+{% if not correo_configurado %}<div class="aviso">El envío de correos no está configurado en esta plataforma, así que no saldrá ningún correo.</div>{% endif %}
+
+<form method="post">{% csrf_token %}
+<input type="hidden" name="accion" value="guardar">
+<div class="panel">
+  <div class="titulo" style="margin-bottom:6px">
+    <h2 style="margin:0">Agradecimiento por compra</h2>
+    <label class="interruptor"><input type="checkbox" name="gracias_activo" {% if sociedad_actual.gracias_activo %}checked{% endif %}><span>{% if sociedad_actual.gracias_activo %}Activado{% else %}Desactivado{% endif %}</span></label>
+  </div>
+  <p class="suave" style="margin-top:0">Al emitir una factura, se envía este correo al contacto comercial del cliente, una sola vez por factura. No se envía en notas de crédito o débito, guías, cotizaciones ni documentos de prueba.{% if enviados_mes %} Este mes se han enviado {{ enviados_mes }}.{% endif %}</p>
+  <div class="dos">
+    <div>
+      <div class="campo" style="margin-bottom:12px"><label for="asunto">Asunto</label><input id="asunto" name="gracias_asunto" maxlength="120" value="{{ sociedad_actual.gracias_asunto }}"></div>
+      <div class="campo"><label for="mensaje">Mensaje</label><textarea id="mensaje" name="gracias_mensaje" rows="10">{{ sociedad_actual.gracias_mensaje }}</textarea>
+        <div class="ayuda">Puedes usar: <code>{contacto}</code> nombre del contacto, <code>{cliente}</code>, <code>{documento}</code> (ej.: Factura N° 123), <code>{total}</code> y <code>{sociedad}</code>.</div></div>
+    </div>
+    <div>
+      <label><strong>Vista previa</strong>{% if ejemplo %} <span class="suave">· con datos de {{ ejemplo }}</span>{% endif %}</label>
+      {% if vista_previa %}
+      <div class="correo-previa"><div class="correo-asunto">{{ vista_previa.0 }}</div><div class="correo-texto">{{ vista_previa.1|linebreaksbr }}</div></div>
+      {% else %}<p class="suave">Agrega clientes para ver la vista previa.</p>{% endif %}
+      <p class="ayuda">Remitente: {{ sociedad_actual.razon_social }}. {% if sociedad_actual.email %}Las respuestas llegan a {{ sociedad_actual.email }}.{% else %}Para recibir las respuestas, agrega un correo en los datos de la sociedad.{% endif %}</p>
+    </div>
+  </div>
+</div>
+
+<div class="panel tabla-panel">
+  <div class="titulo" style="padding:12px 10px 0;margin-bottom:6px">
+    <h2 style="margin:0">Clientes que lo reciben</h2>
+    <div class="acciones"><button type="button" class="chico" data-marcar="1">Marcar todos</button><button type="button" class="chico" data-marcar="0">Desmarcar todos</button></div>
+  </div>
+  {% if sin_correo %}<p class="aviso" style="margin:0 10px 8px">{{ sin_correo }} cliente{{ sin_correo|pluralize }} marcado{{ sin_correo|pluralize }} no tiene{{ sin_correo|pluralize:"n" }} correo de contacto comercial: no recibirán el correo hasta que lo completes.</p>{% endif %}
+  {% if clientes %}
+  <table>
+    <thead><tr><th style="width:40px"></th><th>Cliente</th><th>Contacto comercial</th><th>Correo</th></tr></thead>
+    <tbody>
+    {% for c in clientes %}
+      <tr>
+        <td><input type="checkbox" name="clientes" value="{{ c.pk }}" id="c{{ c.pk }}" {% if c.recibe_gracias %}checked{% endif %}></td>
+        <td><label for="c{{ c.pk }}">{{ c }}</label></td>
+        <td>{{ c.comercial_nombre|default:"—" }}</td>
+        <td>{% if c.comercial_email %}{{ c.comercial_email }}{% else %}<a href="{% url 'cliente_editar' c.pk %}" class="suave">Falta correo</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">Aún no hay clientes.</div>{% endif %}
+</div>
+<div class="acciones"><button class="primario" type="submit">Guardar</button></div>
+</form>
+<form method="post" style="margin-top:10px">{% csrf_token %}<input type="hidden" name="accion" value="prueba">
+  <button type="submit">Enviarme un correo de prueba</button>
+  <span class="ayuda">Usa el texto guardado. Guarda antes si hiciste cambios.</span>
+</form>
+<script>
+(function () {
+  document.querySelectorAll("[data-marcar]").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll('input[name="clientes"]').forEach((c) => { c.checked = b.dataset.marcar === "1"; });
+  }));
+  const interruptor = document.querySelector('input[name="gracias_activo"]');
+  interruptor.addEventListener("change", () => {
+    interruptor.nextElementSibling.textContent = interruptor.checked ? "Activado" : "Desactivado";
+  });
+})();
+</script>
+{% endblock %}

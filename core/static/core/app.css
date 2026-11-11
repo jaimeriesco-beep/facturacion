@@ -94,6 +94,8 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
 .lineas td { padding: 5px 4px; border-bottom: 0; }
 .lineas .c-prod { width: 19%; } .lineas .c-cant { width: 9%; } .lineas .c-precio { width: 13%; }
 .lineas .c-desc { width: 8%; } .lineas .c-chk { width: 7%; text-align: center; }
+.lineas .c-quitar { width: 44px; text-align: center; }
+.oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .totales { margin-left: auto; width: 280px; margin-top: 12px; }
 .totales td { border: 0; padding: 4px 10px; }
 .totales tr.total td { font-weight: 700; font-size: 16px; border-top: 1px solid var(--borde); padding-top: 8px; }
@@ -127,6 +129,31 @@ textarea { resize: vertical; line-height: 1.5; }
   padding: 14px 16px; margin-top: 4px; }
 .correo-asunto { font-weight: 700; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--borde); }
 .correo-texto { white-space: normal; }
+.selector-vista { display: inline-flex; background: #eceee8; border-radius: 10px; padding: 3px; margin-bottom: 16px; }
+.selector-vista a { padding: 7px 16px; border-radius: 8px; color: var(--suave); font-weight: 600; }
+.selector-vista a:hover { text-decoration: none; color: var(--texto); }
+.selector-vista a.activo { background: #fff; color: var(--texto); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.tarjeta.destacada { border-color: #b9d8c4; background: #f3f8f4; }
+.grafico-cabeza { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.grafico-cabeza h2 { margin: 0; }
+.grafico-cabeza p { margin: 2px 0 10px; font-size: 13px; }
+.grafico { width: 100%; min-height: 60px; }
+.grafico svg { display: block; overflow: visible; }
+.grafico .grilla { stroke: #eceee8; stroke-width: 1; }
+.grafico .eje { stroke: #c9cec4; stroke-width: 1; }
+.grafico .eje-texto { font-size: 11.5px; fill: var(--suave); font-family: inherit; }
+.grafico .eje-texto.fuerte { fill: var(--texto); font-size: 12.5px; }
+.grafico .zona { fill: transparent; }
+.grafico .zona:hover { fill: rgba(31, 107, 69, .05); }
+.leyenda { display: flex; gap: 14px; font-size: 13px; color: var(--suave); }
+.leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.grafico-tip { position: fixed; display: none; pointer-events: none; z-index: 50; background: #1f2a24; color: #fff;
+  font-size: 12.5px; line-height: 1.5; padding: 8px 11px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.grafico-tip .muestra { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.datos-grafico { margin-top: 10px; } .datos-grafico table { font-size: 13px; }
+.pronto-panel { border: 1px dashed var(--borde); border-radius: var(--radio); padding: 22px; text-align: center;
+  color: var(--texto); background: #fafbf8; }
+.pronto-panel p { margin: 4px 0; }
 .contacto { border: 1px solid var(--borde); border-radius: var(--radio); padding: 12px 16px 16px;
   margin: 0 0 12px; }
 .contacto legend { font-weight: 700; padding: 0 6px; font-size: 13.5px; }
@@ -201,8 +228,36 @@ textarea { resize: vertical; line-height: 1.5; }
   .lineas .c-prod, .lineas .c-texto { grid-column: 1 / -1; }
   .lineas .c-chk { display: flex; align-items: center; gap: 8px; }
   .lineas .c-chk::before { margin: 0; order: 2; font-size: 14px; color: var(--texto); }
+  .lineas .c-quitar { display: flex; justify-content: flex-end; align-items: center; }
   .lineas .c-chk input { width: 20px; height: 20px; }
   .totales { width: 100%; }
   .en-linea > div { min-width: 100%; }
   .acciones .boton, .acciones button { padding: 9px 14px; }
 }
+
+/* --- Cobranza: marcar como pagado --- */
+.c-accion { text-align: right; }
+.tabla-cobranza .c-accion { width: 1%; }
+.tabla-cobranza td.c-accion .boton-cobro { display: flex; width: 100%; justify-content: center; white-space: nowrap; }
+.tabla-cobranza td.c-accion .boton-cobro + .boton-cobro { margin-top: 5px; }
+.boton-cobro { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; font-size: 13px; }
+.boton-cobro .icono { width: 15px; height: 15px; }
+.boton-pagado { color: var(--verde-oscuro); border-color: var(--verde); }
+.boton-pagado:hover { background: var(--verde-claro); }
+.recordado { margin: 3px 0 0; font-size: 12px; }
+/* Días al vencimiento: azul = hay margen, ámbar = 7 días o menos, rojo = vencida.
+   Siempre con texto, nunca solo color. */
+.plazo { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; background: #eceee8; color: var(--suave); }
+.plazo::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.p-al-dia { background: var(--azul-claro); color: var(--azul); }
+.p-pronto { background: var(--ambar-claro); color: var(--ambar); }
+.p-vencida { background: var(--rojo-claro); color: var(--rojo); }
+.p-sin::before { display: none; }
+.leyenda-plazo { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 8px; }
+@media (max-width: 800px) { .c-accion { white-space: normal; text-align: left; } }
+.ventana-chica { width: min(440px, calc(100vw - 24px)); }
+.ventana-cuerpo { padding: 18px; }
+.ventana-cuerpo .campo { margin-bottom: 12px; }
+.ventana-cuerpo .campo input, .ventana-cuerpo .campo select { width: 100%; }
+.ventana-cuerpo .ayuda { margin: 4px 0 0; }

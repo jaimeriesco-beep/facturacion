@@ -1,9 +1,9 @@
-<tr>
+{% load static %}<tr>
   <td class="c-prod" data-rotulo="Producto (SKU)">{% for oculto in f.hidden_fields %}{{ oculto }}{% endfor %}{{ f.producto }}</td>
   <td class="c-texto" data-rotulo="Descripción">{{ f.descripcion }}{{ f.descripcion.errors }}</td>
   <td class="c-cant" data-rotulo="Cantidad">{{ f.cantidad }}{{ f.cantidad.errors }}</td>
   <td class="c-precio" data-rotulo="Precio neto">{{ f.precio }}{{ f.precio.errors }}</td>
   <td class="c-desc" data-rotulo="Desc. %">{{ f.descuento }}{{ f.descuento.errors }}</td>
   <td class="c-chk" data-rotulo="Exento">{{ f.exento }}</td>
-  <td class="c-chk" data-rotulo="Quitar">{{ f.DELETE }}</td>
+  <td class="c-quitar"><span class="oculto">{{ f.DELETE }}</span><button type="button" class="icono-accion basurero quitar-linea" title="Eliminar línea" aria-label="Eliminar línea"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button></td>
 </tr>

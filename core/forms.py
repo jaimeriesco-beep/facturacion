@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
 
 from .models import (Cliente, Documento, Linea, Pago, Producto, Recurrente,
-                     RecurrenteLinea, Sociedad)
+                     RecurrenteLinea, Sociedad, hoy)
 from .auth import buscar_usuario
 from .utils import decimal_cl, formatear_rut, leer_decimal_cl
 
@@ -278,6 +278,20 @@ class RecurrenteForm(FormBase):
         super().__init__(*args, **kwargs)
         self.fields["cliente"].queryset = sociedad.clientes.filter(activo=True)
         self.fields["cliente"].label_from_instance = etiqueta_cliente
+
+
+class MarcarPagadoForm(forms.Form):
+    """Salda el documento completo. La fecha es opcional: si se deja vacía, queda la de hoy."""
+    fecha = forms.DateField(label="Fecha de pago", required=False, widget=Fecha(),
+                            help_text="Si la dejas vacía, queda la fecha de hoy.")
+    medio = forms.ChoiceField(label="Medio de pago", choices=Pago.MEDIOS, initial="transferencia")
+    nota = forms.CharField(label="Referencia o nota", max_length=120, required=False)
+
+    def clean_fecha(self):
+        fecha = self.cleaned_data.get("fecha")
+        if fecha and fecha > hoy():
+            raise ValidationError("La fecha de pago no puede ser futura.")
+        return fecha or hoy()
 
 
 class PagoForm(forms.ModelForm):

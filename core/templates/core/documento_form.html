@@ -12,7 +12,7 @@
     {{ lineas.management_form }}
     {{ lineas.non_form_errors }}
     <table class="lineas" id="lineas" data-solo-exento="{% if solo_exento %}1{% else %}0{% endif %}" data-iva="19">
-      <thead><tr><th>Producto (SKU)</th><th>Descripción</th><th>Cantidad</th><th>Precio neto</th><th>Desc. %</th><th class="c-chk">Exento</th><th class="c-chk">Quitar</th></tr></thead>
+      <thead><tr><th>Producto (SKU)</th><th>Descripción</th><th>Cantidad</th><th>Precio neto</th><th>Desc. %</th><th class="c-chk">Exento</th><th class="c-quitar"></th></tr></thead>
       <tbody>{% for f in lineas %}{% include "core/_linea.html" %}{% endfor %}</tbody>
     </table>
     <template id="linea-vacia">{% include "core/_linea.html" with f=lineas.empty_form %}</template>

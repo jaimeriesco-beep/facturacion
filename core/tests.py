@@ -961,3 +961,108 @@ class EnviarDocumentosTests(Base):
         self.client.post(reverse("documento_emitir", args=[nota.pk]), {"folio": 2})
         self.assertContains(self.client.get(reverse("documento_correo", args=[nota.pk])),
                             "que corrige la factura N° 15")
+
+
+class LineasTests(Base):
+    def test_basurero_elimina_linea_existente(self):
+        doc = self.factura([(1, 1000, False), (2, 500, False)])
+        ids = list(doc.lineas.values_list("pk", flat=True))
+        r = self.client.get(reverse("documento_editar", args=[doc.pk]))
+        self.assertContains(r, 'class="icono-accion basurero quitar-linea"', count=4)  # 2 líneas, 1 vacía y la plantilla
+        datos = {"cliente": self.cli.pk, "fecha_emision": "2026-11-10", "fecha_vencimiento": "",
+                 "lineas-TOTAL_FORMS": 3, "lineas-INITIAL_FORMS": 2}
+        for i, (pk, precio) in enumerate(zip(ids, ("1000", "500"))):
+            datos.update({f"lineas-{i}-id": pk, f"lineas-{i}-descripcion": "x", f"lineas-{i}-cantidad": "1",
+                          f"lineas-{i}-precio": precio, f"lineas-{i}-descuento": "0"})
+        datos["lineas-1-DELETE"] = "on"
+        datos.update({"lineas-2-descripcion": "", "lineas-2-cantidad": "1", "lineas-2-precio": "abc",
+                      "lineas-2-descuento": "0", "lineas-2-DELETE": "on"})   # una línea nueva descartada
+        self.assertRedirects(self.client.post(reverse("documento_editar", args=[doc.pk]), datos),
+                             reverse("documento", args=[doc.pk]))
+        doc.refresh_from_db()
+        self.assertEqual((doc.lineas.count(), doc.neto), (1, 1000))
+
+    def test_panel_de_inicio(self):
+        self.factura(folio=1)
+        for vista in ("dia", "semana", "mes", "anio", "otra"):
+            r = self.client.get(reverse("inicio"), {"vista": vista})
+            self.assertContains(r, 'id="graficos-datos"')
+            self.assertContains(r, "Ventas netas")
+        r = self.client.get(reverse("inicio"), {"vista": "mes"})
+        self.assertContains(r, "$100.000")            # venta neta del mes, sin IVA
+        self.assertContains(r, "Principales clientes")
+
+
+class MarcarPagadoTests(Base):
+    def test_sin_fecha_queda_la_de_hoy(self):
+        doc = self.factura(folio=1)
+        r = self.client.get(reverse("cobranza"))
+        self.assertContains(r, reverse("pago_marcar", args=[doc.pk]))
+        self.assertContains(r, "<title>Cobranza</title>", html=False)
+        r = self.client.post(reverse("pago_marcar", args=[doc.pk]),
+                             {"fecha": "", "medio": "cheque", "nota": "", "volver": "/cobranza/?cliente="})
+        self.assertRedirects(r, "/cobranza/?cliente=", fetch_redirect_response=False)
+        pago = doc.pagos.get()
+        self.assertEqual((pago.fecha, pago.medio, pago.monto), (date.today(), "cheque", 119000))
+        doc.refresh_from_db()
+        self.assertEqual(doc.saldo, 0)
+        self.assertNotContains(self.client.get(reverse("cobranza")), reverse("pago_marcar", args=[doc.pk]))
+
+    def test_con_fecha_elegida_y_saldo_parcial(self):
+        doc = self.factura(folio=2)
+        Pago.objects.create(documento=doc, monto=19000)
+        self.client.post(reverse("pago_marcar", args=[doc.pk]),
+                         {"fecha": "2026-10-05", "medio": "efectivo", "nota": "Caja"})
+        pago = doc.pagos.order_by("-id").first()
+        self.assertEqual((pago.fecha, pago.medio, pago.monto, pago.nota),
+                         (date(2026, 10, 5), "efectivo", 100000, "Caja"))
+
+    def test_rechaza_fecha_futura_y_redireccion_externa(self):
+        doc = self.factura(folio=3)
+        r = self.client.post(reverse("pago_marcar", args=[doc.pk]),
+                             {"fecha": (date.today() + timedelta(days=3)).isoformat(),
+                              "medio": "transferencia", "volver": "//malo.com/"})
+        self.assertRedirects(r, reverse("cobranza"), fetch_redirect_response=False)
+        self.assertFalse(doc.pagos.exists())
+
+
+@override_settings(CORREO_CONFIGURADO=True, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class CobranzaTests(Base):
+    def test_plazo_colores(self):
+        doc = self.factura(folio=1)
+        casos = [(20, ("al-dia", "Faltan 20 días")), (7, ("pronto", "Faltan 7 días")),
+                 (1, ("pronto", "Falta 1 día")), (0, ("pronto", "Vence hoy")),
+                 (-1, ("vencida", "Vencida hace 1 día")), (-40, ("vencida", "Vencida hace 40 días"))]
+        for dias, esperado in casos:
+            doc.fecha_vencimiento = date.today() + timedelta(days=dias)
+            self.assertEqual(doc.plazo, esperado)
+        doc.save()
+        self.assertContains(self.client.get(reverse("cobranza")), 'class="plazo p-vencida"')
+
+    def test_recordatorio_va_al_contacto_de_cobranza(self):
+        from django.core import mail
+        self.cli.cobranza_email = "pagos@cliente.cl"
+        self.cli.cobranza_nombre = "Marta"
+        self.cli.contacto_unico = False
+        self.cli.save()
+        doc = self.factura(folio=7)
+        doc.fecha_vencimiento = date.today() - timedelta(days=5)
+        doc.save()
+        r = self.client.get(reverse("cobranza_recordatorio", args=[doc.pk]))
+        self.assertContains(r, "pagos@cliente.cl")
+        self.assertContains(r, "Hola Marta")
+        self.assertContains(r, "aún figura pendiente de pago")
+        r = self.client.post(reverse("cobranza_recordatorio", args=[doc.pk]), {
+            "para": "pagos@cliente.cl", "asunto": "Recordatorio", "mensaje": "Hola"})
+        self.assertRedirects(r, reverse("cobranza"), fetch_redirect_response=False)
+        self.assertEqual(mail.outbox[0].to, ["pagos@cliente.cl"])
+        self.assertTrue(mail.outbox[0].attachments)
+        doc.refresh_from_db()
+        self.assertEqual(doc.recordatorios, 1)
+        self.assertContains(self.client.get(reverse("cobranza")), "Recordado el")
+
+    def test_sin_saldo_no_hay_recordatorio(self):
+        doc = self.factura(folio=8)
+        Pago.objects.create(documento=doc, monto=doc.total)
+        r = self.client.get(reverse("cobranza_recordatorio", args=[doc.pk]))
+        self.assertRedirects(r, reverse("cobranza"), fetch_redirect_response=False)

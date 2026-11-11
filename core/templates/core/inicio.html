@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load formato %}
+{% load formato static %}
 {% block titulo %}Inicio · {{ sociedad_actual }}{% endblock %}
 {% block contenido %}
 <div class="titulo">
@@ -10,12 +10,56 @@
     <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>
   </div>
 </div>
-<div class="tarjetas">
-  <div class="tarjeta"><div class="rotulo">Por cobrar</div><div class="valor">{{ por_cobrar|clp }}</div></div>
-  <div class="tarjeta{% if vencido %} alerta{% endif %}"><div class="rotulo">Vencido</div><div class="valor">{{ vencido|clp }}</div><div class="nota">{{ n_vencidas }} factura{{ n_vencidas|pluralize }}</div></div>
-  <div class="tarjeta"><div class="rotulo">Facturado en {{ mes }}</div><div class="valor">{{ facturado|clp }}</div><div class="nota">IVA incluido, neto de notas de crédito</div></div>
-  <div class="tarjeta"><div class="rotulo">Borradores</div><div class="valor">{{ borradores }}</div><div class="nota"><a href="{% url 'documentos' %}?estado=borrador">Ver borradores</a></div></div>
+<div class="selector-vista" role="tablist" aria-label="Período">
+  {% for clave, nombres in vistas.items %}<a href="?vista={{ clave }}" role="tab" class="{% if clave == vista %}activo{% endif %}" {% if clave == vista %}aria-selected="true"{% endif %}>{{ nombres.0 }}</a>{% endfor %}
 </div>
+
+<div class="tarjetas">
+  <div class="tarjeta destacada">
+    <div class="rotulo">Ventas netas · {{ rotulo_actual|lower }}</div>
+    <div class="valor">{{ actual|clp }}</div>
+    <div class="nota">{{ rotulo_anterior }}: {{ anterior|clp }}{% if docs_actual %} · {{ docs_actual }} factura{{ docs_actual|pluralize }}{% endif %}</div>
+  </div>
+  <div class="tarjeta"><div class="rotulo">Promedio por período</div><div class="valor">{{ promedio|clp }}</div><div class="nota">{{ rango }}, sin contar el actual</div></div>
+  <div class="tarjeta"><div class="rotulo">Por cobrar</div><div class="valor">{{ por_cobrar|clp }}</div><div class="nota"><a href="{% url 'cobranza' %}">Ver cobranza</a></div></div>
+  <div class="tarjeta{% if vencido %} alerta{% endif %}"><div class="rotulo">Vencido</div><div class="valor">{{ vencido|clp }}</div><div class="nota">{{ n_vencidas }} factura{{ n_vencidas|pluralize }}</div></div>
+</div>
+
+<div class="panel">
+  <div class="grafico-cabeza"><div><h2>Ventas netas</h2><p class="suave">{{ rango }} · sin IVA, descontadas las notas de crédito · total {{ total_rango|clp }}</p></div></div>
+  <div id="g-ventas" class="grafico"></div>
+  <details class="datos-grafico"><summary>Ver datos en tabla</summary>
+    <table><thead><tr><th>Período</th><th class="num">Ventas netas</th><th class="num">Facturado</th><th class="num">Cobrado</th></tr></thead><tbody>
+    {% for fila in tabla %}<tr><td>{{ fila.0 }}</td><td class="num">{{ fila.1|clp }}</td><td class="num">{{ fila.2|clp }}</td><td class="num">{{ fila.3|clp }}</td></tr>{% endfor %}
+    </tbody></table></details>
+</div>
+
+<div class="dos">
+  <div class="panel">
+    <div class="grafico-cabeza"><div><h2>Facturado y cobrado</h2><p class="suave">IVA incluido · cobrado {{ cobrado_rango|clp }} de {{ facturado_rango|clp }}</p></div>
+      <div class="leyenda"><span><i style="background:#2f8a55"></i>Facturado</span><span><i style="background:#2a78d6"></i>Cobrado</span></div></div>
+    <div id="g-cobros" class="grafico"></div>
+  </div>
+  <div class="panel">
+    <div class="grafico-cabeza"><div><h2>Principales clientes</h2><p class="suave">Ventas netas · {{ rango|lower }}</p></div></div>
+    <div id="g-clientes" class="grafico"></div>
+  </div>
+</div>
+
+<div class="dos">
+  <div class="panel">
+    <div class="grafico-cabeza"><div><h2>Antigüedad de la cobranza</h2><p class="suave">Saldo pendiente según días de atraso</p></div></div>
+    <div id="g-antiguedad" class="grafico"></div>
+  </div>
+  <div class="panel">
+    <div class="grafico-cabeza"><div><h2>Gastos</h2><p class="suave">Compras y gastos por período</p></div></div>
+    <div class="pronto-panel">
+      <p>Este gráfico se activará cuando incorporemos el módulo de <strong>Compras</strong>, con las facturas de proveedores traídas desde el SII.</p>
+      <p class="suave">Ahí también podremos mostrar el margen: ventas menos gastos.</p>
+    </div>
+  </div>
+</div>
+
 {% if recurrentes_pendientes %}
 <div class="aviso">Hay {{ recurrentes_pendientes }} factura{{ recurrentes_pendientes|pluralize }} recurrente{{ recurrentes_pendientes|pluralize }} de {{ mes }} sin generar. <a href="{% url 'recurrentes' %}">Ir a recurrentes</a></div>
 {% endif %}
@@ -38,4 +82,8 @@
   </table>
   {% else %}<div class="vacio">No hay facturas pendientes de cobro.</div>{% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+{{ graficos|json_script:"graficos-datos" }}
+<script src="{% static 'core/graficos.js' %}"></script>
 {% endblock %}

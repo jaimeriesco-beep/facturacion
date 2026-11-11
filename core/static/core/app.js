@@ -92,6 +92,15 @@
     recalcular();
   });
   cuerpo.addEventListener("input", recalcular);
+  // Basurero de cada línea: la marca para eliminar al guardar y la saca de la vista.
+  cuerpo.addEventListener("click", (e) => {
+    const boton = e.target.closest(".quitar-linea");
+    if (!boton) return;
+    const fila = boton.closest("tr");
+    campo(fila, "DELETE").checked = true;
+    fila.hidden = true;
+    recalcular();
+  });
 
   document.getElementById("agregar-linea").addEventListener("click", () => {
     const html = document.getElementById("linea-vacia").innerHTML

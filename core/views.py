@@ -26,16 +26,16 @@ from django.views.decorators.http import require_POST
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
-from . import marketing
+from . import marketing, resumen
 from .dte import servicio
 from .dte.motor import ErrorDTE
 from .dte.pdf import generar_pdf
 from .dte.secretos import ErrorSecreto, cifrar, descifrar
 from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm, EnviarCorreoForm,
-                    ImportarClientesForm, LineasFormSet, PagoForm, ProductoForm, RecurrenteForm,
+                    ImportarClientesForm, LineasFormSet, MarcarPagadoForm, PagoForm, ProductoForm, RecurrenteForm,
                     RecurrenteLineasFormSet, SociedadForm, UsuarioForm)
 from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
-                     NOTA_DEBITO, NOTAS,
+                     NOTA_DEBITO, NOTAS, DIAS_AVISO,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, hoy)
 from .templatetags.formato import numero
@@ -126,7 +126,11 @@ def inicio(request):
     recurrentes_pendientes = sum(
         1 for r in request.sociedad.recurrentes.filter(activa=True)
         if r.aplica(hoy().year, hoy().month) and not r.documentos.filter(periodo=periodo).exists())
+    datos = resumen.calcular(request.sociedad, request.GET.get("vista", "mes"))
     return render(request, "core/inicio.html", {
+        **datos, "graficos": {**datos["series"], "antiguedad": resumen.antiguedad(request.sociedad)},
+        "tabla": list(reversed(list(zip(datos["series"]["rangos"], datos["series"]["ventas"],
+                                        datos["series"]["facturado"], datos["series"]["cobrado"])))),
         "por_cobrar": suma(por_cobrar, "saldo_a"),
         "vencido": suma(vencidas, "saldo_a"),
         "n_vencidas": vencidas.count(),
@@ -741,6 +745,39 @@ def _rol_destinatario(doc):
     return "facturacion" if (doc.es_factura or doc.es_nota) else "comercial"
 
 
+def _recordatorio_inicial(doc, usuario):
+    contacto = doc.cliente.contacto("cobranza")
+    if not contacto["email"]:   # sin contacto de cobranza, se usa el de facturación
+        contacto = doc.cliente.contacto("facturacion")
+    saludo = contacto["nombre"] or doc.cliente.nombre_fantasia or doc.cliente.razon_social
+    nombre = f"{doc.tipo_corto.lower()} N° {doc.folio}"
+    emision = f"emitida el {doc.fecha_emision:%d/%m/%Y}"
+    dias = doc.dias_vencido
+    if not doc.fecha_vencimiento:
+        estado = "se encuentra pendiente de pago"
+    elif dias > 0:
+        estado = f"venció el {doc.fecha_vencimiento:%d/%m/%Y} y aún figura pendiente de pago"
+    elif dias == 0:
+        estado = "vence hoy"
+    else:
+        estado = f"vence el {doc.fecha_vencimiento:%d/%m/%Y}"
+    pagado = (f" Registramos abonos por {formatear_clp(doc.pagado)}, por lo que el saldo es de "
+              f"{formatear_clp(doc.saldo)}.") if doc.pagado else ""
+    firma = usuario.get_full_name() or doc.sociedad.razon_social
+    datos_pago = ""
+    if doc.sociedad.email:
+        datos_pago = f" Si ya realizaste el pago, te agradecemos enviarnos el comprobante a {doc.sociedad.email}."
+    else:
+        datos_pago = " Si ya realizaste el pago, te agradecemos enviarnos el comprobante respondiendo este correo."
+    return {
+        "para": contacto["email"],
+        "asunto": f"Recordatorio de pago · {doc.tipo_corto} N° {doc.folio} · {doc.sociedad.razon_social}",
+        "mensaje": (f"Hola {saludo}:\n\nTe recordamos que la {nombre}, {emision} por "
+                    f"{formatear_clp(doc.total)}, {estado}.{pagado}\n\n"
+                    f"Te adjuntamos nuevamente el documento.{datos_pago}\n\n"
+                    f"Saludos,\n{firma}\n{doc.sociedad.razon_social}")}
+
+
 def _correo_inicial(doc, usuario):
     contacto = doc.cliente.contacto(_rol_destinatario(doc))
     saludo = contacto["nombre"] or doc.cliente.nombre_fantasia or doc.cliente.razon_social
@@ -769,17 +806,24 @@ def _correo_inicial(doc, usuario):
 
 
 @con_sociedad
-def documento_correo(request, pk):
+def documento_correo(request, pk, recordatorio=False):
     """Envía un documento emitido por correo con su PDF (y su XML si lo timbró la app).
 
-    GET devuelve el formulario para la ventana emergente.
+    Con recordatorio=True es el recordatorio de pago de cobranza: va al contacto de
+    cobranza y vuelve a la lista de cobranza. GET devuelve el formulario para la ventana.
     """
     doc = _documento(request, pk)
     lista_url = "cotizaciones" if doc.es_cotizacion else "documentos"
+    if recordatorio:
+        lista_url = "cobranza"
+        if doc.estado_cobro not in ("pendiente", "parcial", "vencida"):
+            messages.error(request, "Solo se envían recordatorios de facturas con saldo pendiente.")
+            return redirect("cobranza")
     if doc.estado != Documento.EMITIDO:
         messages.error(request, "Emite el documento antes de enviarlo.")
         return redirect("documento", pk=pk)
-    form = EnviarCorreoForm(request.POST or None, initial=_correo_inicial(doc, request.user))
+    inicial = (_recordatorio_inicial if recordatorio else _correo_inicial)(doc, request.user)
+    form = EnviarCorreoForm(request.POST or None, initial=inicial)
     if request.method == "POST":
         if not settings.CORREO_CONFIGURADO:
             messages.error(request, "El envío de correos no está configurado.")
@@ -798,22 +842,37 @@ def documento_correo(request, pk):
             except Exception:
                 messages.error(request, "No se pudo enviar el correo. Intenta de nuevo en unos minutos.")
             else:
-                doc.correo_enviado_a = ", ".join(datos["para"])
-                doc.correo_enviado_el = timezone.now()
-                doc.save(update_fields=["correo_enviado_a", "correo_enviado_el"])
-                messages.success(request, f"{doc} enviada a {doc.correo_enviado_a}.")
-                if request.POST.get("volver") == "lista":
+                destinatarios = ", ".join(datos["para"])
+                if recordatorio:
+                    doc.recordatorio_enviado_a = destinatarios
+                    doc.recordatorio_enviado_el = timezone.now()
+                    doc.recordatorios += 1
+                    doc.save(update_fields=["recordatorio_enviado_a", "recordatorio_enviado_el",
+                                            "recordatorios"])
+                    messages.success(request, f"Recordatorio de la {doc} enviado a {destinatarios}.")
+                else:
+                    doc.correo_enviado_a = destinatarios
+                    doc.correo_enviado_el = timezone.now()
+                    doc.save(update_fields=["correo_enviado_a", "correo_enviado_el"])
+                    messages.success(request, f"{doc} enviada a {destinatarios}.")
+                if recordatorio or request.POST.get("volver") == "lista":
                     return redirect(lista_url)
                 return redirect("documento", pk=pk)
         else:
             for errores in form.errors.values():
                 for e in errores:
                     messages.error(request, e)
-        return redirect("documento", pk=pk)
+        return redirect(lista_url if recordatorio else "documento", **({} if recordatorio else {"pk": pk}))
+    rol = _rol_destinatario(doc)
+    if recordatorio:
+        usa_facturacion = (not doc.cliente.contacto("cobranza")["email"]
+                           and doc.cliente.contacto("facturacion")["email"])
+        rol = "facturacion" if usa_facturacion else "cobranza"
     return render(request, "core/_enviar_correo.html", {
         "doc": doc, "form": form, "correo_configurado": settings.CORREO_CONFIGURADO,
-        "volver": request.GET.get("volver", ""),
-        "rol": dict(Cliente.ROLES)[_rol_destinatario(doc)].lower()})
+        "volver": request.GET.get("volver", ""), "recordatorio": recordatorio,
+        "accion": reverse("cobranza_recordatorio" if recordatorio else "documento_correo", args=[pk]),
+        "rol": dict(Cliente.ROLES)[rol].lower()})
 
 
 # --- Emisión electrónica propia ------------------------------------------------
@@ -971,6 +1030,31 @@ def pago_nuevo(request, pk):
 
 @require_POST
 @con_sociedad
+def pago_marcar(request, pk):
+    """Botón «Marcar como pagado» de cobranza: registra un pago por el saldo completo."""
+    doc = _documento(request, pk)
+    volver = request.POST.get("volver", "")
+    destino = volver if volver.startswith("/") and not volver.startswith("//") else reverse("cobranza")
+    form = MarcarPagadoForm(request.POST)
+    if not doc.es_factura or doc.estado != Documento.EMITIDO:
+        messages.error(request, "Solo se registran pagos sobre facturas emitidas.")
+    elif doc.saldo <= 0:
+        messages.info(request, f"{doc} ya no tiene saldo pendiente.")
+    elif form.is_valid():
+        datos = form.cleaned_data
+        Pago.objects.create(documento=doc, monto=doc.saldo, fecha=datos["fecha"],
+                            medio=datos["medio"], nota=datos["nota"])
+        messages.success(request, f"{doc} marcada como pagada el {datos['fecha']:%d/%m/%Y} "
+                                  f"({dict(Pago.MEDIOS)[datos['medio']].lower()}).")
+    else:
+        for errores in form.errors.values():
+            for e in errores:
+                messages.error(request, e)
+    return redirect(destino)
+
+
+@require_POST
+@con_sociedad
 def pago_eliminar(request, pk):
     pago = get_object_or_404(Pago, pk=pk, documento__sociedad=request.sociedad)
     doc_id = pago.documento_id
@@ -1012,7 +1096,7 @@ def cobranza(request):
     return render(request, "core/cobranza.html", {
         "pendientes": pendientes, "tramos": list(zip(TRAMOS, tramos)),
         "total": sum(tramos), "cliente": cliente,
-        "clientes": con_deuda})
+        "clientes": con_deuda, "pagado_form": MarcarPagadoForm(), "dias_aviso": DIAS_AVISO})
 
 
 # --- Facturación recurrente ---------------------------------------------------

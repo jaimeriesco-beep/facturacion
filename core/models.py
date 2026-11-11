@@ -28,6 +28,9 @@ FACTURAS = (FACTURA, FACTURA_EXENTA)
 NOTAS = (NOTA_CREDITO, NOTA_DEBITO)
 
 
+DIAS_AVISO = 7   # desde cuántos días antes del vencimiento se marca en ámbar
+
+
 def hoy():
     return timezone.localdate()
 
@@ -271,6 +274,10 @@ class Documento(models.Model):
     # Último envío por correo del documento (cotizaciones).
     correo_enviado_a = models.CharField(max_length=300, blank=True, editable=False)
     correo_enviado_el = models.DateTimeField(null=True, blank=True, editable=False)
+    # Recordatorios de pago enviados desde cobranza.
+    recordatorio_enviado_a = models.CharField(max_length=300, blank=True, editable=False)
+    recordatorio_enviado_el = models.DateTimeField(null=True, blank=True, editable=False)
+    recordatorios = models.PositiveSmallIntegerField(default=0, editable=False)
     envio = models.ForeignKey("Envio", null=True, blank=True, on_delete=models.SET_NULL,
                               related_name="documentos", editable=False)
     recurrente = models.ForeignKey(
@@ -404,6 +411,22 @@ class Documento(models.Model):
         if not self.fecha_vencimiento:
             return 0
         return (hoy() - self.fecha_vencimiento).days
+
+    @property
+    def plazo(self):
+        """Días al vencimiento para la columna de cobranza: (clase, texto).
+
+        Azul: aún hay margen. Ámbar: vence en 7 días o menos. Rojo: vencida.
+        """
+        if not self.fecha_vencimiento:
+            return "sin", "Sin vencimiento"
+        dias = -self.dias_vencido
+        if dias < 0:
+            return "vencida", f"Vencida hace {-dias} día{'s' if dias != -1 else ''}"
+        if dias == 0:
+            return "pronto", "Vence hoy"
+        texto = f"Falta{'n' if dias != 1 else ''} {dias} día{'s' if dias != 1 else ''}"
+        return ("pronto" if dias <= DIAS_AVISO else "al-dia"), texto
 
     @property
     def estado_cobro(self):

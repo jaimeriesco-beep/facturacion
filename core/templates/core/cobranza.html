@@ -1,5 +1,5 @@
 {% extends "core/base.html" %}
-{% load formato %}
+{% load formato static %}
 {% block titulo %}Cobranza{% endblock %}
 {% block contenido %}
 <div class="titulo">
@@ -17,26 +17,68 @@
     <option value="">Todos los clientes</option>
     {% for c in clientes %}<option value="{{ c.pk }}" {% if cliente == c.pk|stringformat:"s" %}selected{% endif %}>{{ c }}</option>{% endfor %}
   </select>
+  <span class="leyenda-plazo suave"><span class="plazo p-al-dia">Al día</span><span class="plazo p-pronto">Vence en {{ dias_aviso }} días o menos</span><span class="plazo p-vencida">Vencida</span></span>
 </form>
 <div class="panel tabla-panel">
   {% if pendientes %}
-  <table>
-    <thead><tr><th>Cliente</th><th>Documento</th><th>Emisión</th><th>Vencimiento</th><th>Estado</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th></tr></thead>
+  <table class="tabla-cobranza">
+    <thead><tr><th>Cliente</th><th>Documento</th><th>Emisión</th><th>Vencimiento</th><th>Días al vencimiento</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th><th class="c-accion">Acciones</th></tr></thead>
     <tbody>
-    {% for d in pendientes %}
+    {% for d in pendientes %}{% with p=d.plazo %}
       <tr>
-        <td>{{ d.cliente }}</td>
-        <td><a href="{% url 'documento' d.pk %}">{{ d }}</a></td>
-        <td>{{ d.fecha_emision|date:"d/m/Y" }}</td>
-        <td>{{ d.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
-        <td><span class="etiqueta e-{{ d.estado_cobro }}">{% if d.estado_cobro == 'vencida' %}Vencida hace {{ d.dias_vencido }} día{{ d.dias_vencido|pluralize }}{% else %}{{ d.estado_cobro|capfirst }}{% endif %}</span></td>
-        <td class="num">{{ d.total|clp }}</td>
-        <td class="num">{{ d.pagado|clp }}</td>
-        <td class="num"><strong>{{ d.saldo|clp }}</strong></td>
+        <td data-rotulo="Cliente">{{ d.cliente }}</td>
+        <td data-rotulo="Documento"><a href="{% url 'documento' d.pk %}">{{ d }}</a>{% if d.estado_cobro == 'parcial' %} <span class="etiqueta e-parcial">Abono</span>{% endif %}</td>
+        <td data-rotulo="Emisión">{{ d.fecha_emision|date:"d/m/Y" }}</td>
+        <td data-rotulo="Vencimiento">{{ d.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</td>
+        <td data-rotulo="Días al vencimiento"><span class="plazo p-{{ p.0 }}">{{ p.1 }}</span></td>
+        <td class="num" data-rotulo="Total">{{ d.total|clp }}</td>
+        <td class="num" data-rotulo="Pagado">{{ d.pagado|clp }}</td>
+        <td class="num" data-rotulo="Saldo"><strong>{{ d.saldo|clp }}</strong></td>
+        <td class="c-accion">
+          <button type="button" class="boton-cobro" data-ver="{% url 'cobranza_recordatorio' d.pk %}" data-titulo="Recordatorio de pago · {{ d }}" title="{% if d.recordatorio_enviado_el %}Último recordatorio: {{ d.recordatorio_enviado_el|date:'d/m/Y' }}{% else %}Enviar un correo al contacto de cobranza{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#enviar"/></svg>Enviar recordatorio</button>
+          <button type="button" class="boton-cobro boton-pagado" data-pagar="{% url 'pago_marcar' d.pk %}" data-documento="{{ d }}" data-cliente="{{ d.cliente }}" data-saldo="{{ d.saldo|clp }}">Marcar como pagado</button>
+          {% if d.recordatorio_enviado_el %}<div class="ayuda recordado">Recordado el {{ d.recordatorio_enviado_el|date:"d/m" }}{% if d.recordatorios > 1 %} ({{ d.recordatorios }} veces){% endif %}</div>{% endif %}
+        </td>
       </tr>
-    {% endfor %}
+    {% endwith %}{% endfor %}
     </tbody>
   </table>
   {% else %}<div class="vacio">No hay facturas pendientes de cobro.</div>{% endif %}
 </div>
+
+<dialog id="marcar-pagado" class="ventana ventana-chica" aria-labelledby="pagado-titulo">
+  <form method="post" id="pagado-form">{% csrf_token %}
+    <input type="hidden" name="volver" value="{{ request.get_full_path }}">
+    <div class="ventana-barra"><strong id="pagado-titulo">Marcar como pagado</strong><button type="button" data-cerrar aria-label="Cerrar">Cerrar ✕</button></div>
+    <div class="ventana-cuerpo">
+      <p id="pagado-resumen" style="margin-top:0"></p>
+      <div class="campo"><label for="{{ pagado_form.fecha.id_for_label }}">{{ pagado_form.fecha.label }} <span class="suave">(opcional)</span></label>{{ pagado_form.fecha }}<p class="ayuda">{{ pagado_form.fecha.help_text }}</p></div>
+      <div class="campo"><label for="{{ pagado_form.medio.id_for_label }}">{{ pagado_form.medio.label }}</label>{{ pagado_form.medio }}</div>
+      <div class="campo"><label for="{{ pagado_form.nota.id_for_label }}">{{ pagado_form.nota.label }} <span class="suave">(opcional)</span></label>{{ pagado_form.nota }}</div>
+      <div class="acciones"><button class="primario" type="submit">Confirmar pago</button><button type="button" data-cerrar>Cancelar</button></div>
+    </div>
+  </form>
+</dialog>
+{% include "core/_ventana.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+// «Marcar como pagado»: registra un pago por el saldo completo, con fecha opcional.
+(function () {
+  const ventana = document.getElementById("marcar-pagado"), form = document.getElementById("pagado-form");
+  const fecha = form.querySelector("input[type=date]");
+  if (fecha) fecha.max = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  document.querySelectorAll("[data-pagar]").forEach((b) => b.addEventListener("click", () => {
+    form.action = b.dataset.pagar;
+    form.reset();
+    const r = document.getElementById("pagado-resumen");
+    r.textContent = b.dataset.documento + " · " + b.dataset.cliente;
+    r.append(document.createElement("br"));
+    const s = document.createElement("strong"); s.textContent = "Saldo a pagar: " + b.dataset.saldo; r.append(s);
+    ventana.showModal();
+  }));
+  ventana.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => ventana.close()));
+  ventana.addEventListener("click", (e) => { if (e.target === ventana) ventana.close(); });
+})();
+</script>
 {% endblock %}

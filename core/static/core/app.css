@@ -4,32 +4,37 @@
   --rojo: #b3261e; --rojo-claro: #fbe9e7; --ambar: #8a5a00; --ambar-claro: #fdf1d6;
   --azul: #1d4f91; --azul-claro: #e5eefb; --radio: 8px;
 }
+@font-face { font-family: "DM Sans"; src: url("fuentes/dm-sans.woff2") format("woff2");
+  font-weight: 100 1000; font-style: normal; font-display: swap; }
 * { box-sizing: border-box; }
-body { margin: 0; font: 14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+body { margin: 0; font: 14.5px/1.5 "DM Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--texto); background: var(--fondo); }
 a { color: var(--verde); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1 { font-size: 22px; margin: 0; }
+h1 { font-size: 23px; margin: 0; letter-spacing: -.01em; }
 h2 { font-size: 15px; margin: 0 0 12px; }
 
-.app { display: grid; grid-template-columns: 210px 1fr; min-height: 100vh; }
-.menu { background: var(--verde-oscuro); color: #fff; padding: 18px 12px; }
-.menu a.marca { font-weight: 700; font-size: 16px; padding: 0 10px 16px; color: #fff; }
+.app { display: grid; grid-template-columns: 250px 1fr; min-height: 100vh; }
+.menu { background: #2f5146; color: #fff; padding: 18px 14px; }
+.menu a.marca { display: block; padding: 0 4px 14px; color: #fff; font-weight: 700; font-size: 17px; }
 .menu a.marca:hover { background: none; }
-.menu a.marca img { display: block; width: 100%; background: #fff; border-radius: 6px; padding: 8px; }
+.menu a.marca img { display: block; width: 100%; background: #fff; border-radius: 10px; padding: 8px; }
+.menu-items a, .menu .pronto { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  border-radius: 10px; color: #d9e6dc; font-weight: 500; font-size: 15px; }
+.menu-items a:hover { background: rgba(255,255,255,.09); text-decoration: none; }
+.menu-items a.activo { background: #e1eac6; color: #1f3d31; font-weight: 700; }
+.menu-items a.activo::after { content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: #2f5146; margin-left: auto; }
+.menu .icono { width: 21px; height: 21px; flex: none; }
+.menu .seccion { font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: #9dbba9; padding: 18px 12px 5px; }
+.menu .pronto { color: #9dbba9; font-style: italic; font-weight: 400; }
 details { margin-top: 14px; } summary { cursor: pointer; color: var(--suave); }
 details[open] summary { margin-bottom: 10px; }
 .etiqueta.e-aceptado { background: var(--verde-claro); color: var(--verde-oscuro); }
 .etiqueta.e-rechazado { background: var(--rojo-claro); color: var(--rojo); }
 .etiqueta.e-reparo, .etiqueta.e-enviado, .etiqueta.e-prueba { background: var(--ambar-claro); color: var(--ambar); }
 .pasos { margin: 0; padding-left: 20px; } .pasos li { margin-bottom: 6px; }
-.menu a { display: block; color: #d6e6dc; padding: 8px 10px; border-radius: 6px; }
-.menu a:hover { background: rgba(255,255,255,.08); text-decoration: none; }
-.menu a.activo { background: rgba(255,255,255,.16); color: #fff; font-weight: 600; }
-.menu .seccion { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-  color: #8fb8a0; padding: 16px 10px 4px; }
-.menu .pronto { display: block; padding: 6px 10px; color: #8fb8a0; font-style: italic; font-size: 13px; }
-.menu .separador { height: 1px; background: rgba(255,255,255,.15); margin: 10px; }
 .contenido { min-width: 0; }
 .barra { display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 24px; background: var(--panel); border-bottom: 1px solid var(--borde); }
@@ -144,7 +149,7 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
   .menu-boton:hover { background: rgba(255,255,255,.1); }
   .menu-items { display: none; width: 100%; padding-bottom: 6px; }
   .menu.abierto .menu-items { display: block; }
-  .menu .menu-items a { padding: 10px; }
+  .menu-items a { padding: 11px 12px; }
   .barra { padding: 8px 12px; flex-wrap: wrap; }
   .barra form:first-child { flex: 1; min-width: 0; }
   .barra label { display: none; }

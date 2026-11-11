@@ -13,22 +13,24 @@
     <a class="marca" href="{% url 'inicio' %}">{% if sociedad_actual.logo %}<img src="{% url 'sociedad_logo' sociedad_actual.pk %}" alt="{{ sociedad_actual.razon_social }}">{% else %}Facturación{% endif %}</a>
     <button type="button" class="menu-boton" aria-expanded="false" aria-controls="menu-items" onclick="const m=this.closest('.menu').classList.toggle('abierto');this.setAttribute('aria-expanded',m)">Menú</button>
     <div class="menu-items" id="menu-items">
-    <a href="{% url 'inicio' %}" class="{% if u == 'inicio' %}activo{% endif %}">Inicio</a>
+    <a href="{% url 'inicio' %}" class="{% if u == 'inicio' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#inicio"/></svg><span>Inicio</span></a>
     <div class="seccion">Ventas</div>
-    <a href="{% url 'documentos' %}" class="{% if 'documento' in u or 'nota' in u or 'guia' in u %}{% if not doc.es_cotizacion %}activo{% endif %}{% endif %}">Documentos de venta</a>
-    <a href="{% url 'cotizaciones' %}" class="{% if 'cotizacion' in u or doc.es_cotizacion %}activo{% endif %}">Cotizaciones</a>
-    <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}">Cobranza</a>
-    <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}">Recurrentes</a>
-    <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}">Clientes</a>
-    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}">Productos y servicios</a>
+    <a href="{% url 'documentos' %}" class="{% if 'documento' in u and not doc.es_cotizacion or 'nota' in u or 'guia' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#documentos"/></svg><span>Documentos de venta</span></a>
+    <a href="{% url 'cotizaciones' %}" class="{% if 'cotizacion' in u or doc.es_cotizacion %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#cotizaciones"/></svg><span>Cotizaciones</span></a>
+    <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#cobranza"/></svg><span>Cobranza</span></a>
+    <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#recurrentes"/></svg><span>Recurrentes</span></a>
+    <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#clientes"/></svg><span>Clientes</span></a>
+    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos y servicios</span></a>
     <div class="seccion">Compras</div>
-    <span class="pronto">Próximamente</span>
+    <span class="pronto"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#compras"/></svg><span>Próximamente</span></span>
     <div class="seccion">Informes</div>
-    <a href="{% url 'reportes' %}" class="{% if u == 'reportes' %}activo{% endif %}">Reportes</a>
+    <a href="{% url 'reportes' %}" class="{% if u == 'reportes' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#reportes"/></svg><span>Reportes</span></a>
     <div class="seccion">Configuración</div>
-    <a href="{% url 'conexion_sii' %}" class="{% if u == 'conexion_sii' %}activo{% endif %}">Conexión SII</a>
-    <a href="{% url 'sociedades' %}" class="{% if 'sociedad' in u %}activo{% endif %}">Sociedades</a>
-    {% if request.user.is_superuser %}<a href="{% url 'usuarios' %}" class="{% if 'usuario' in u %}activo{% endif %}">Usuarios</a>{% endif %}
+    <a href="{% url 'conexion_sii' %}" class="{% if u == 'conexion_sii' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#sii"/></svg><span>Conexión SII</span></a>
+    <a href="{% url 'sociedades' %}" class="{% if 'sociedad' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#sociedades"/></svg><span>Sociedades</span></a>
+    {% if request.user.is_superuser %}
+    <a href="{% url 'usuarios' %}" class="{% if 'usuario' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#usuarios"/></svg><span>Usuarios</span></a>
+    {% endif %}
     </div>
   </nav>
   <div class="contenido">

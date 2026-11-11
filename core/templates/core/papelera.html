@@ -1,0 +1,70 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Papelera{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Papelera</h1>
+  {% if documentos %}<form method="post" action="{% url 'papelera_accion' %}" class="form-icono" onsubmit="return confirm('¿Vaciar la papelera? Los {{ documentos|length }} documento{{ documentos|length|pluralize }} se eliminará{{ documentos|length|pluralize:'n' }} definitivamente y no se podrá{{ documentos|length|pluralize:'n' }} recuperar.')">{% csrf_token %}<input type="hidden" name="accion" value="vaciar"><button type="submit" class="boton-papelera">Vaciar papelera</button></form>{% endif %}
+</div>
+<p class="suave" style="margin-top:-6px">Los documentos que eliminas quedan aquí {{ dias }} días y luego se borran solos. Mientras tanto puedes restaurarlos. Las facturas timbradas y aceptadas por el SII no pueden eliminarse: se anulan con una nota de crédito.</p>
+{% if documentos %}
+<form method="post" action="{% url 'papelera_accion' %}" id="form-papelera">{% csrf_token %}
+<div class="panel tabla-panel">
+  <div class="barra-papelera">
+    <label class="todas"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todos"> <span id="sel-texto">Seleccionar todos</span></label>
+    <button type="submit" name="accion" value="restaurar" class="chico" data-requiere>Restaurar</button>
+    <button type="submit" name="accion" value="eliminar" class="chico boton-papelera" data-requiere data-confirmar>Eliminar definitivamente</button>
+  </div>
+  <table>
+    <thead><tr><th class="c-sel"></th><th>Documento</th><th>Cliente</th><th>Emisión</th><th class="num">Total</th><th>Eliminado</th><th>Se borra</th><th class="c-accion"></th></tr></thead>
+    <tbody>
+    {% for d in documentos %}
+      <tr>
+        <td class="c-sel"><input type="checkbox" name="documentos" value="{{ d.pk }}" class="sel-doc" aria-label="Seleccionar {{ d }}"></td>
+        <td data-rotulo="Documento">{{ d }}{% if d.es_prueba %} <span class="etiqueta e-prueba">Prueba</span>{% endif %} <span class="etiqueta e-{{ d.estado }}">{{ d.get_estado_display }}</span></td>
+        <td data-rotulo="Cliente">{{ d.cliente }}</td>
+        <td data-rotulo="Emisión">{{ d.fecha_emision|date:"d/m/Y" }}</td>
+        <td class="num" data-rotulo="Total">{{ d.total|clp }}</td>
+        <td data-rotulo="Eliminado">{{ d.eliminado_el|date:"d/m/Y H:i" }}{% if d.eliminado_por %}<div class="ayuda" style="margin:0">por {{ d.eliminado_por }}</div>{% endif %}</td>
+        <td data-rotulo="Se borra"><span class="plazo {% if d.dias_en_papelera <= 3 %}p-vencida{% elif d.dias_en_papelera <= 7 %}p-pronto{% else %}p-sin{% endif %}">{% if d.dias_en_papelera == 0 %}Hoy{% else %}En {{ d.dias_en_papelera }} día{{ d.dias_en_papelera|pluralize }}{% endif %}</span></td>
+        <td class="c-accion"><button type="submit" name="accion" value="restaurar" class="chico" data-uno="{{ d.pk }}">Restaurar</button></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+</form>
+{% else %}
+<div class="panel vacio">La papelera está vacía.</div>
+{% endif %}
+<p><a href="{% url 'documentos' %}">← Volver a documentos de venta</a></p>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById("form-papelera");
+  if (!form) return;
+  const casillas = [...form.querySelectorAll(".sel-doc")], todas = document.getElementById("sel-todas");
+  const requieren = form.querySelectorAll("[data-requiere]");
+  function actualizar() {
+    const n = casillas.filter((c) => c.checked).length;
+    requieren.forEach((b) => { b.disabled = !n; });
+    document.getElementById("sel-texto").textContent = n ? n + " seleccionado" + (n > 1 ? "s" : "") : "Seleccionar todos";
+    todas.checked = n && n === casillas.length; todas.indeterminate = n > 0 && n < casillas.length;
+  }
+  casillas.forEach((c) => c.addEventListener("change", actualizar));
+  todas.addEventListener("change", () => { casillas.forEach((c) => { c.checked = todas.checked; }); actualizar(); });
+  // «Restaurar» de una fila: solo ese documento.
+  form.querySelectorAll("[data-uno]").forEach((b) => b.addEventListener("click", () => {
+    casillas.forEach((c) => { c.checked = c.value === b.dataset.uno; });
+  }));
+  form.addEventListener("submit", (e) => {
+    if (e.submitter && e.submitter.hasAttribute("data-confirmar")) {
+      const n = casillas.filter((c) => c.checked).length;
+      if (!confirm("¿Eliminar definitivamente " + n + " documento" + (n > 1 ? "s" : "") + "? No se podrá recuperar.")) e.preventDefault();
+    }
+  });
+  actualizar();
+})();
+</script>
+{% endblock %}

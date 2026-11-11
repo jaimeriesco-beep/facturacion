@@ -16,7 +16,6 @@
     {% if doc.estado == 'emitido' %}<button type="button" class="primario" data-ver="{% url 'documento_correo' doc.pk %}" data-titulo="Enviar {{ doc }} por correo">Enviar por correo</button>{% endif %}
     {% if doc.estado == 'borrador' %}
       <a class="boton" href="{% url 'documento_editar' doc.pk %}">Editar</a>
-      <form method="post" action="{% url 'documento_eliminar' doc.pk %}" onsubmit="return confirm('¿Eliminar este borrador?')">{% csrf_token %}<button class="peligro">Eliminar</button></form>
     {% elif doc.es_factura %}
       <form method="post" action="{% url 'nota_nueva' doc.pk NC %}">{% csrf_token %}<button>Nota de crédito</button></form>
       <form method="post" action="{% url 'nota_nueva' doc.pk ND %}">{% csrf_token %}<button>Nota de débito</button></form>
@@ -34,6 +33,7 @@
     {% elif doc.estado == 'emitido' and not doc.es_cotizacion %}
       <form method="post" action="{% url 'documento_reabrir' doc.pk %}" onsubmit="return confirm('Esto solo corrige el registro en esta app; no anula nada en el SII. ¿Volver a borrador?')">{% csrf_token %}<button>Corregir registro</button></form>
     {% endif %}
+    {% include "core/_basurero.html" with d=doc texto=True %}
   </div>
 </div>
 

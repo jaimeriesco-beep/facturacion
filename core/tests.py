@@ -4,11 +4,13 @@ from io import BytesIO
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.contrib.messages import get_messages
+from django.utils import timezone
 from django.urls import reverse
 from openpyxl import load_workbook
 
 from .models import (FACTURA, FACTURA_EXENTA, NOTA_CREDITO, Cliente, Documento, Linea, Pago,
-                     Producto, Recurrente, RecurrenteLinea, Sociedad, hoy)
+                     Producto, Recurrente, RecurrenteLinea, Sociedad, hoy, purgar_papelera)
 from .utils import formatear_clp, formatear_rut, normalizar_rut
 
 
@@ -1116,3 +1118,86 @@ class CobranzaFiltrosTests(Base):
             "documentos": [self.al_dia.pk, self.pronto.pk, 99999], "medio": "cheque"})
         self.assertEqual(self.al_dia.pagos.count(), 1)
         self.assertEqual(self.pronto.pagos.get().fecha, date.today())
+
+
+class PapeleraTests(Base):
+    def eliminar(self, doc, **extra):
+        return self.client.post(reverse("documento_eliminar", args=[doc.pk]), extra)
+
+    def test_borrador_va_a_la_papelera_y_se_restaura(self):
+        doc = self.factura()
+        r = self.eliminar(doc)
+        self.assertRedirects(r, reverse("documentos"), fetch_redirect_response=False)
+        self.assertFalse(Documento.objects.filter(pk=doc.pk).exists())
+        self.assertTrue(Documento.todos.filter(pk=doc.pk, eliminado_el__isnull=False).exists())
+        r = self.client.get(reverse("documentos"))
+        self.assertNotIn(doc, r.context["documentos"])
+        self.assertEqual(r.context["deshacer"], doc)                # aviso «Deshacer»
+        self.assertEqual(self.client.get(reverse("documento", args=[doc.pk])).status_code, 404)
+        self.assertContains(self.client.get(reverse("papelera")), str(doc))
+        self.client.post(reverse("papelera_accion"), {"accion": "restaurar", "documentos": [doc.pk]})
+        self.assertTrue(Documento.objects.filter(pk=doc.pk).exists())
+
+    def test_dte_timbrado_no_se_puede_eliminar(self):
+        doc = self.factura(folio=5)
+        Documento.objects.filter(pk=doc.pk).update(xml_firmado=b"<DTE/>")
+        r = self.eliminar(doc)
+        self.assertTrue(Documento.objects.filter(pk=doc.pk).exists())
+        mensajes = " ".join(str(m) for m in get_messages(r.wsgi_request))
+        self.assertIn("emite una nota de crédito", mensajes)
+        # Rechazado por el SII: sí se puede.
+        Documento.objects.filter(pk=doc.pk).update(estado_sii="rechazado")
+        self.eliminar(doc)
+        self.assertFalse(Documento.objects.filter(pk=doc.pk).exists())
+
+    def test_registrada_del_portal_con_pagos_o_notas_no_se_elimina(self):
+        doc = self.factura(folio=6)
+        pago = Pago.objects.create(documento=doc, monto=1000)
+        self.eliminar(doc)
+        self.assertTrue(Documento.objects.filter(pk=doc.pk).exists())
+        pago.delete()
+        nota = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=NOTA_CREDITO, referencia=doc)
+        self.eliminar(doc)
+        self.assertTrue(Documento.objects.filter(pk=doc.pk).exists())
+        nota.delete()
+        self.eliminar(doc)
+        self.assertFalse(Documento.objects.filter(pk=doc.pk).exists())
+        self.assertEqual(self.client.get(reverse("cobranza")).context["pendientes"], [])
+
+    def test_se_borra_sola_a_los_30_dias(self):
+        vieja, nueva = self.factura(), self.factura()
+        for d in (vieja, nueva):
+            self.eliminar(d)
+        Documento.todos.filter(pk=vieja.pk).update(eliminado_el=timezone.now() - timedelta(days=31))
+        self.assertEqual(purgar_papelera(), 1)
+        self.assertFalse(Documento.todos.filter(pk=vieja.pk).exists())
+        self.assertTrue(Documento.todos.filter(pk=nueva.pk).exists())
+
+    def test_eliminar_definitivo_y_vaciar(self):
+        a, b, c = self.factura(), self.factura(), self.factura()
+        for d in (a, b, c):
+            self.eliminar(d)
+        self.client.post(reverse("papelera_accion"), {"accion": "eliminar", "documentos": [a.pk]})
+        self.assertFalse(Documento.todos.filter(pk=a.pk).exists())
+        self.client.post(reverse("papelera_accion"), {"accion": "vaciar"})
+        self.assertFalse(Documento.todos.filter(pk__in=[b.pk, c.pk]).exists())
+
+    def test_recurrente_en_papelera_se_puede_regenerar(self):
+        rec = Recurrente.objects.create(sociedad=self.soc, cliente=self.cli, dia_emision=1)
+        RecurrenteLinea.objects.create(recurrente=rec, descripcion="Arriendo", cantidad=1, precio=1000)
+        doc = rec.generar(2027, 1)
+        self.eliminar(doc)
+        nuevo = rec.generar(2027, 1)
+        self.assertIsNotNone(nuevo)
+        self.assertFalse(Documento.todos.filter(pk=doc.pk).exists())
+
+    def test_folio_en_papelera_no_se_repite(self):
+        from .models import COTIZACION
+        cot = self.factura(tipo=COTIZACION)
+        self.client.post(reverse("cotizacion_emitir", args=[cot.pk]))
+        cot.refresh_from_db()
+        self.eliminar(cot)
+        otra = self.factura(tipo=COTIZACION)
+        self.client.post(reverse("cotizacion_emitir", args=[otra.pk]))
+        otra.refresh_from_db()
+        self.assertEqual(otra.folio, cot.folio + 1)

@@ -11,11 +11,15 @@
     <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>{% endif %}
   </div>
 </div>
+{% if deshacer %}<div class="aviso aviso-deshacer"><span>{{ deshacer }} está en la papelera.</span>
+  <form method="post" action="{% url 'papelera_deshacer' deshacer.pk %}" class="form-icono">{% csrf_token %}<button type="submit" class="chico">Deshacer</button></form>
+  <a href="{% url 'papelera' %}">Ver papelera</a></div>{% endif %}
 <form class="filtros" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Cliente, RUT o folio">
   {% if not cotizaciones %}<select name="tipo"><option value="">Todos los tipos</option>{% for codigo, nombre in tipos %}<option value="{{ codigo }}" {% if tipo == codigo|stringformat:"s" %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>{% endif %}
   <select name="estado"><option value="">Todos los estados</option>{% for codigo, nombre in estados %}<option value="{{ codigo }}" {% if estado == codigo %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
   <button type="submit">Filtrar</button>
+  <a class="enlace-papelera" href="{% url 'papelera' %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg>Papelera</a>
 </form>
 <div class="panel tabla-panel">
   {% if documentos %}
@@ -36,6 +40,7 @@
           {% if d.estado == 'emitido' %}<button type="button" class="icono-accion accion-enviar" data-ver="{% url 'documento_correo' d.pk %}?volver=lista" data-titulo="Enviar {{ d }} por correo" title="Enviar por correo" aria-label="Enviar {{ d }} por correo"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#enviar"/></svg></button>{% endif %}
           <button type="button" class="icono-accion accion-ver" data-ver="{% url 'documento_vista' d.pk %}" data-titulo="{{ d }}" title="Ver" aria-label="Ver {{ d }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#ver"/></svg></button>
           <a class="icono-accion accion-pdf" href="{% url 'documento_pdf' d.pk %}?descargar=1" title="Descargar PDF" aria-label="Descargar PDF de {{ d }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#pdf"/></svg></a>
+          {% include "core/_basurero.html" with volver=request.get_full_path %}
         </td>
       </tr>
     {% endfor %}

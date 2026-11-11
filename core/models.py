@@ -1,4 +1,5 @@
 import calendar
+import math
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -208,6 +209,15 @@ class DocumentoQuerySet(models.QuerySet):
                 .con_saldo().filter(saldo_a__gt=0))
 
 
+DIAS_PAPELERA = 30   # los documentos en la papelera se borran solos después de estos días
+
+
+class DocumentoManager(models.Manager.from_queryset(DocumentoQuerySet)):
+    """Manager por defecto: oculta lo que está en la papelera (también en sociedad.documentos)."""
+    def get_queryset(self):
+        return super().get_queryset().filter(eliminado_el__isnull=True)
+
+
 class Documento(models.Model):
     BORRADOR, EMITIDO, ANULADO = "borrador", "emitido", "anulado"
     ESTADOS = [(BORRADOR, "Borrador"), (EMITIDO, "Emitido"), (ANULADO, "Anulado")]
@@ -284,8 +294,12 @@ class Documento(models.Model):
         "Recurrente", null=True, blank=True, on_delete=models.SET_NULL, related_name="documentos")
     periodo = models.CharField(max_length=7, blank=True)  # AAAA-MM
     creado = models.DateTimeField(auto_now_add=True)
+    # Papelera: con fecha, el documento no aparece en ninguna parte y se borra a los 30 días.
+    eliminado_el = models.DateTimeField(null=True, blank=True, editable=False, db_index=True)
+    eliminado_por = models.CharField(max_length=150, blank=True, editable=False)
 
-    objects = DocumentoQuerySet.as_manager()
+    objects = DocumentoManager()
+    todos = DocumentoQuerySet.as_manager()   # incluye los de la papelera
 
     class Meta:
         ordering = ["-fecha_emision", "-id"]
@@ -321,6 +335,69 @@ class Documento(models.Model):
     @property
     def es_cotizacion(self):
         return self.tipo == COTIZACION
+
+    def motivo_no_eliminable(self):
+        """Por qué no puede ir a la papelera, o "" si puede.
+
+        Un DTE timbrado y aceptado por el SII es un documento tributario vigente: la ley
+        obliga a conservarlo (art. 17 y 200 del Código Tributario) y solo se anula con
+        una nota de crédito. Sí pueden borrarse los borradores, las cotizaciones, los
+        documentos de prueba, los rechazados por el SII y las copias registradas desde
+        el portal del SII (el original sigue en el SII).
+        """
+        hijos = getattr(self, "n_hijos_a", None)   # anotado en los listados (con_asociados)
+        if hijos is None:
+            hijos = Documento.objects.filter(referencia=self).count()
+        if hijos:
+            return "Tiene notas de crédito o débito asociadas."
+        if self.estado == self.BORRADOR or self.es_cotizacion or self.es_prueba:
+            return ""
+        if self.estado_sii == "rechazado":
+            return ""
+        if self.es_propio:
+            return ("Es un documento tributario válido ante el SII y la ley obliga a conservarlo. "
+                    "Para dejarlo sin efecto, emite una nota de crédito que lo anule.")
+        pagado = getattr(self, "pagado_a", None)   # anotado en los listados (con_saldo)
+        if pagado is None:
+            pagado = self.pagos.exists()
+        if pagado:
+            return "Tiene pagos registrados. Elimínalos primero desde el documento."
+        return ""
+
+    @property
+    def eliminable(self):
+        return not self.motivo_no_eliminable()
+
+    @property
+    def aviso_papelera(self):
+        """Texto extra para la confirmación de eliminar."""
+        if self.estado == self.EMITIDO and not self.es_propio and not self.es_prueba and not self.es_cotizacion:
+            return "Se emitió en el portal del SII: el original sigue allá; aquí solo se borra el registro."
+        if self.estado_sii == "rechazado":
+            return "El SII lo rechazó, así que no tiene validez tributaria."
+        return ""
+
+    @property
+    def borrar_el(self):
+        if self.eliminado_el:
+            return self.eliminado_el + timedelta(days=DIAS_PAPELERA)
+
+    @property
+    def dias_en_papelera(self):
+        """Días que le quedan antes de borrarse definitivamente."""
+        if self.eliminado_el:
+            segundos = (self.borrar_el - timezone.now()).total_seconds()
+            return max(math.ceil(segundos / 86400), 0)
+
+    def a_papelera(self, usuario=""):
+        self.eliminado_el = timezone.now()
+        self.eliminado_por = str(usuario)[:150]
+        self.save(update_fields=["eliminado_el", "eliminado_por"])
+
+    def restaurar(self):
+        self.eliminado_el = None
+        self.eliminado_por = ""
+        self.save(update_fields=["eliminado_el", "eliminado_por"])
 
     def asociados(self):
         """Documentos vinculados: (de dónde viene, qué se generó a partir de este)."""
@@ -548,6 +625,8 @@ class Recurrente(models.Model):
         periodo = f"{anio}-{mes:02d}"
         if not self.aplica(anio, mes) or self.documentos.filter(periodo=periodo).exists():
             return None
+        # Si la del período está en la papelera, se reemplaza por la nueva.
+        Documento.todos.filter(recurrente=self, periodo=periodo, eliminado_el__isnull=False).delete()
         emision = date(anio, mes, self.dia_emision)
         doc = Documento.objects.create(
             sociedad=self.sociedad, cliente=self.cliente, tipo=self.tipo,
@@ -630,3 +709,19 @@ class DosPasos(models.Model):
                                    related_name="dos_pasos")
     secreto = models.BinaryField()
     confirmado = models.BooleanField(default=False)
+
+
+def purgar_papelera(sociedad=None):
+    """Borra definitivamente lo que lleva más de DIAS_PAPELERA días en la papelera."""
+    limite = timezone.now() - timedelta(days=DIAS_PAPELERA)
+    qs = Documento.todos.filter(eliminado_el__lt=limite)
+    if sociedad is not None:
+        qs = qs.filter(sociedad=sociedad)
+    borrados = 0
+    for doc in qs:
+        try:
+            doc.delete()
+            borrados += 1
+        except models.ProtectedError:
+            pass   # algo lo referencia; se reintenta en la próxima pasada
+    return borrados

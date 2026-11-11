@@ -16,7 +16,7 @@ from django.core.cache import cache
 from django.core.mail import EmailMessage
 from django.core.management import call_command
 from django.db import transaction
-from django.db.models import Max, Q, Sum
+from django.db.models import Max, ProtectedError, Q, Sum
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -35,9 +35,9 @@ from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm, Env
                     ImportarClientesForm, LineasFormSet, MarcarPagadoForm, PagoForm, ProductoForm, RecurrenteForm,
                     RecurrenteLineasFormSet, SociedadForm, UsuarioForm)
 from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
-                     NOTA_DEBITO, NOTAS, DIAS_AVISO,
+                     NOTA_DEBITO, NOTAS, DIAS_AVISO, DIAS_PAPELERA,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
-                     Recurrente, Sociedad, hoy)
+                     Recurrente, Sociedad, hoy, purgar_papelera)
 from .templatetags.formato import numero
 from .utils import MESES, actividades_sii, decimal_cl, formatear_clp, formatear_rut
 
@@ -434,8 +434,13 @@ def documentos(request, cotizaciones=False):
         if q.isdigit():
             filtro |= Q(folio=int(q))
         qs = qs.filter(filtro)
+    _purgar(request.sociedad)
+    deshacer = request.session.pop("deshacer_papelera", None)
+    deshacer = (Documento.todos.filter(pk=deshacer, sociedad=request.sociedad,
+                                       eliminado_el__isnull=False).first() if deshacer else None)
+    documentos = list(qs[:500])
     return render(request, "core/documentos.html", {
-        "documentos": qs[:500], "tipos": [t for t in TIPOS if t[0] != COTIZACION],
+        "documentos": documentos, "deshacer": deshacer, "tipos": [t for t in TIPOS if t[0] != COTIZACION],
         "estados": Documento.ESTADOS[:2], "tipo": tipo, "estado": estado, "q": q,
         "cotizaciones": cotizaciones, "COTIZACION": COTIZACION})
 
@@ -539,10 +544,12 @@ def documento_emitir(request, pk):
         errores = ["El documento ya está emitido."]
     elif not form.is_valid():
         errores.append("Indica un folio válido.")
-    elif request.sociedad.documentos.filter(
-            tipo=doc.tipo, folio=form.cleaned_data["folio"], es_prueba=False).exists():
+    elif (repetido := Documento.todos.filter(
+            sociedad=request.sociedad, tipo=doc.tipo, folio=form.cleaned_data["folio"],
+            es_prueba=False).first()):
         errores.append(f"Ya existe una {doc.tipo_corto.lower()} con el folio "
-                       f"{form.cleaned_data['folio']}.")
+                       f"{form.cleaned_data['folio']}"
+                       f"{' en la papelera: restáurala o elimínala definitivamente' if repetido.eliminado_el else ''}.")
     if errores:
         for e in errores:
             messages.error(request, e)
@@ -580,17 +587,94 @@ def documento_reabrir(request, pk):
     return redirect("documento", pk=pk)
 
 
+def _purgar(sociedad):
+    """Vacía lo vencido de la papelera, como mucho una vez por hora por sociedad."""
+    clave = f"papelera-purga-{sociedad.pk}"
+    if not cache.get(clave):
+        cache.set(clave, 1, 3600)
+        purgar_papelera(sociedad)
+
+
 @require_POST
 @con_sociedad
 def documento_eliminar(request, pk):
+    """Mueve el documento a la papelera (se borra solo a los 30 días)."""
     doc = _documento(request, pk)
-    if doc.estado != Documento.BORRADOR:
-        messages.error(request, "Solo se pueden eliminar los borradores.")
-        return redirect("documento", pk=pk)
-    destino = "cotizaciones" if doc.es_cotizacion else "documentos"
-    doc.delete()
-    messages.success(request, "Borrador eliminado.")
+    destino = request.POST.get("volver", "")
+    if not (destino.startswith("/") and not destino.startswith("//")):
+        destino = reverse("cotizaciones" if doc.es_cotizacion else "documentos")
+    motivo = doc.motivo_no_eliminable()
+    if motivo:
+        messages.error(request, f"No se puede eliminar {doc}. {motivo}")
+        return redirect(destino if request.POST.get("volver") else reverse("documento", args=[pk]))
+    doc.a_papelera(request.user.get_username())
+    request.session["deshacer_papelera"] = doc.pk
+    messages.success(request, f"{doc} se movió a la papelera. Se eliminará definitivamente el "
+                              f"{timezone.localtime(doc.borrar_el):%d/%m/%Y}.")
     return redirect(destino)
+
+
+@con_sociedad
+def papelera(request):
+    _purgar(request.sociedad)
+    docs = list(Documento.todos.filter(sociedad=request.sociedad, eliminado_el__isnull=False)
+                .select_related("cliente").order_by("-eliminado_el"))
+    return render(request, "core/papelera.html", {"documentos": docs, "dias": DIAS_PAPELERA})
+
+
+@require_POST
+@con_sociedad
+def papelera_accion(request):
+    """Restaurar o eliminar definitivamente lo marcado; «vaciar» borra todo."""
+    accion = request.POST.get("accion")
+    en_papelera = Documento.todos.filter(sociedad=request.sociedad, eliminado_el__isnull=False)
+    if accion == "vaciar":
+        docs = list(en_papelera)
+    else:
+        ids = [int(i) for i in request.POST.getlist("documentos") if i.isdigit()]
+        docs = list(en_papelera.filter(pk__in=ids))
+        if not docs:
+            messages.error(request, "Marca al menos un documento.")
+            return redirect("papelera")
+    if accion == "restaurar":
+        restaurados, conflictos = 0, []
+        for doc in docs:
+            if (doc.recurrente_id and Documento.objects.filter(
+                    recurrente_id=doc.recurrente_id, periodo=doc.periodo).exists()):
+                conflictos.append(doc)
+                continue
+            doc.restaurar()
+            restaurados += 1
+        if restaurados == 1 and len(docs) == 1:
+            messages.success(request, f"Se restauró {docs[0]}.")
+        elif restaurados:
+            messages.success(request, f"Se restauraron {restaurados} documentos.")
+        for doc in conflictos:
+            messages.error(request, f"{doc} no se restauró: ya existe otra factura recurrente de ese período.")
+    elif accion in ("eliminar", "vaciar"):
+        borrados = 0
+        for doc in docs:
+            try:
+                with transaction.atomic():
+                    doc.delete()
+                borrados += 1
+            except ProtectedError:
+                messages.error(request, f"{doc} no se pudo eliminar: otro documento lo referencia.")
+        if borrados:
+            messages.success(request, f"{borrados} documento{'s' if borrados > 1 else ''} "
+                                      f"eliminado{'s' if borrados > 1 else ''} definitivamente.")
+    return redirect("papelera")
+
+
+@require_POST
+@con_sociedad
+def papelera_deshacer(request, pk):
+    doc = get_object_or_404(Documento.todos, pk=pk, sociedad=request.sociedad,
+                            eliminado_el__isnull=False)
+    doc.restaurar()
+    request.session.pop("deshacer_papelera", None)
+    messages.success(request, f"Se restauró {doc}.")
+    return redirect("cotizaciones" if doc.es_cotizacion else "documentos")
 
 
 @require_POST
@@ -654,8 +738,9 @@ def cotizacion_emitir(request, pk):
         return redirect("documento", pk=pk)
     with transaction.atomic():
         if not doc.folio:
-            ultimo = (Sociedad.objects.select_for_update().get(pk=doc.sociedad_id)
-                      .documentos.cotizaciones().aggregate(m=Max("folio"))["m"] or 0)
+            Sociedad.objects.select_for_update().get(pk=doc.sociedad_id)
+            ultimo = (Documento.todos.filter(sociedad_id=doc.sociedad_id).cotizaciones()
+                      .aggregate(m=Max("folio"))["m"] or 0)   # incluye la papelera
             doc.folio = ultimo + 1
         doc.estado = Documento.EMITIDO
         if not doc.fecha_vencimiento:

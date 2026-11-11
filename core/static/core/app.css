@@ -302,3 +302,20 @@ tr.seleccionada td { background: #f1f6ef; }
 /* Buscador sobre tablas (marketing) */
 .buscador-tabla { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 10px 10px; }
 .buscador-tabla input { flex: 1; min-width: 220px; max-width: 460px; }
+
+/* Papelera */
+.form-icono { display: inline-flex; margin: 0; }
+.basurero.bloqueado { color: #a9b0a8; }
+.basurero.bloqueado:hover { background: #eef0eb; color: var(--suave); }
+.boton-papelera { display: inline-flex; align-items: center; gap: 6px; color: var(--rojo); border-color: #e7b9b4; }
+.boton-papelera:hover { background: var(--rojo-claro); }
+.boton-papelera .icono { width: 16px; height: 16px; }
+.boton-papelera.bloqueado { color: var(--suave); border-color: var(--borde); }
+.boton-papelera.bloqueado:hover { background: #eef0eb; }
+.enlace-papelera { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font-size: 14px; color: var(--suave); }
+.enlace-papelera .icono { width: 16px; height: 16px; }
+.aviso-deshacer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #eef3f8; color: var(--texto); }
+.barra-papelera { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid var(--borde); flex-wrap: wrap; }
+.barra-papelera .todas { display: inline-flex; gap: 8px; align-items: center; margin-right: auto; font-size: 14px; }
+.barra-papelera .todas input { width: 17px; height: 17px; }
+.c-sel input { width: 17px; height: 17px; }

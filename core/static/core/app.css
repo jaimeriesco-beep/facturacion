@@ -78,6 +78,7 @@ tbody tr:hover { background: #fafbf8; }
 input, select, textarea { font: inherit; padding: 7px 9px; border: 1px solid #cfd4c9;
   border-radius: 6px; background: #fff; color: var(--texto); width: 100%; }
 input[type=checkbox] { width: auto; }
+input.invalido { border-color: var(--rojo); background: var(--rojo-claro); }
 input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color: var(--verde); }
 .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 18px; }
 .campo label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }

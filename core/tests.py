@@ -882,3 +882,50 @@ class EnviarCotizacionTests(Base):
         m.attach("cotizacion.pdf", b"%PDF-1.4 prueba", "application/pdf")
         cuerpo = BrevoBackend._cuerpo(m)
         self.assertEqual(cuerpo["attachment"], [{"name": "cotizacion.pdf", "content": "JVBERi0xLjQgcHJ1ZWJh"}])
+
+
+class DecimalesTests(Base):
+    def test_lectura_con_coma(self):
+        from decimal import Decimal as D
+        from .utils import leer_decimal_cl, redondear_arriba
+        casos = {"14,5": D("14.5"), "1.250": D("1250"), "1.250,75": D("1250.75"), "350000": D("350000"),
+                 "0,3333": D("0.3333"), " 2,5 ": D("2.5"), "1.000.000": D("1000000"), ",5": D("0.5")}
+        for texto, esperado in casos.items():
+            self.assertEqual(leer_decimal_cl(texto), esperado, texto)
+        for malo in ("14.5", "1.25", "12.3456", "1,2,3", "abc", "1.2.3"):
+            with self.assertRaises(ValueError, msg=malo):
+                leer_decimal_cl(malo)
+        self.assertEqual([redondear_arriba(x) for x in (D("42.3"), D("42"), D("0.01"), D("225000.9"))],
+                         [43, 42, 1, 225001])
+
+    def test_factura_con_decimales_y_neto_hacia_arriba(self):
+        r = self.client.post(reverse("documento_nuevo", args=[FACTURA]), {
+            "cliente": self.cli.pk, "fecha_emision": "2026-11-10",
+            "lineas-TOTAL_FORMS": 2, "lineas-INITIAL_FORMS": 0,
+            "lineas-0-descripcion": "Albahaca", "lineas-0-cantidad": "3", "lineas-0-precio": "14,1",
+            "lineas-0-descuento": "0",
+            "lineas-1-descripcion": "Microgreens", "lineas-1-cantidad": "1,5", "lineas-1-precio": "1.250,33",
+            "lineas-1-descuento": "2,5"})
+        doc = Documento.objects.get()
+        self.assertRedirects(r, reverse("documento", args=[doc.pk]))
+        montos = list(doc.lineas.values_list("monto", flat=True))
+        self.assertEqual(montos, [43, 1829])          # 42,3 -> 43 ; 1.828,61 -> 1.829
+        self.assertEqual((doc.neto, doc.iva, doc.total), (1872, 356, 2228))
+        r = self.client.get(reverse("documento_editar", args=[doc.pk]))
+        self.assertContains(r, 'value="14,1"')
+        self.assertContains(r, 'value="1250,33"')
+        self.assertContains(self.client.get(reverse("documento", args=[doc.pk])), "$1.250,33")
+        # Un punto usado como decimal se rechaza con un mensaje claro.
+        r = self.client.post(reverse("documento_editar", args=[doc.pk]), {
+            "cliente": self.cli.pk, "fecha_emision": "2026-11-10",
+            "lineas-TOTAL_FORMS": 1, "lineas-INITIAL_FORMS": 0,
+            "lineas-0-descripcion": "x", "lineas-0-cantidad": "1", "lineas-0-precio": "14.5",
+            "lineas-0-descuento": "0"})
+        self.assertContains(r, "Usa coma para los decimales")
+
+    def test_producto_con_coma(self):
+        r = self.client.post(reverse("producto_nuevo"), {"nombre": "Granel", "precio": "14,5", "activo": "on"})
+        self.assertRedirects(r, reverse("productos"))
+        prod = Producto.objects.get(nombre="Granel")
+        self.assertEqual(str(prod.precio.normalize()), "14.5")
+        self.assertContains(self.client.get(reverse("producto_editar", args=[prod.pk])), 'value="14,5"')

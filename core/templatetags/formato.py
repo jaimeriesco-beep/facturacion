@@ -11,7 +11,7 @@ register.filter("rut", formatear_rut)
 def numero(valor):
     """Cantidades y precios sin ceros sobrantes: 1.000 -> 1 ; 1250.50 -> 1.250,5"""
     try:
-        texto = f"{valor:,.3f}".rstrip("0").rstrip(".")
+        texto = f"{valor:,.4f}".rstrip("0").rstrip(".")
     except (TypeError, ValueError):
         return valor
     return texto.replace(",", "X").replace(".", ",").replace("X", ".")

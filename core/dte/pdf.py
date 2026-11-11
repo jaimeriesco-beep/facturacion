@@ -22,7 +22,7 @@ NOMBRES = {1: "COTIZACIÓN", 33: "FACTURA ELECTRÓNICA", 34: "FACTURA NO AFECTA 
 
 
 def _numero(valor):
-    texto = f"{valor:,.3f}".rstrip("0").rstrip(".")
+    texto = f"{valor:,.4f}".rstrip("0").rstrip(".")
     return texto.replace(",", "X").replace(".", ",").replace("X", ".")
 
 

@@ -9,7 +9,7 @@ from django.db.models import BigIntegerField, Count, F, OuterRef, Q, Subquery, S
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .utils import MESES, formatear_rut, normalizar_rut, redondear
+from .utils import MESES, formatear_rut, normalizar_rut, redondear, redondear_arriba
 
 FACTURA, FACTURA_EXENTA, GUIA, NOTA_DEBITO, NOTA_CREDITO = 33, 34, 52, 56, 61
 COTIZACION = 1  # documento interno, no tributario: no existe para el SII
@@ -158,7 +158,7 @@ class Producto(models.Model):
     nombre = models.CharField(max_length=80)
     descripcion = models.CharField("Descripción", max_length=300, blank=True)
     unidad = models.CharField(max_length=4, blank=True, help_text="Ej.: UN, HR, MES")
-    precio = models.DecimalField("Precio neto", max_digits=14, decimal_places=2, default=0)
+    precio = models.DecimalField("Precio neto", max_digits=18, decimal_places=4, default=0)
     exento = models.BooleanField("Exento de IVA", default=False)
     activo = models.BooleanField(default=True)
 
@@ -422,7 +422,7 @@ class LineaBase(models.Model):
         verbose_name="Producto (SKU)")
     descripcion = models.CharField("Descripción", max_length=300)
     cantidad = models.DecimalField(max_digits=12, decimal_places=3, default=1)
-    precio = models.DecimalField("Precio unitario", max_digits=14, decimal_places=2, default=0)
+    precio = models.DecimalField("Precio unitario", max_digits=18, decimal_places=4, default=0)
     descuento = models.DecimalField("Desc. %", max_digits=5, decimal_places=2, default=0)
     exento = models.BooleanField(default=False)
 
@@ -439,8 +439,9 @@ class LineaBase(models.Model):
             raise ValidationError({"descuento": "Debe estar entre 0 y 100."})
 
     def calcular_monto(self):
+        """Monto neto de la línea, en pesos enteros redondeados hacia arriba."""
         bruto = Decimal(self.cantidad) * Decimal(self.precio)
-        return redondear(bruto * (Decimal(100) - Decimal(self.descuento)) / 100)
+        return redondear_arriba(bruto * (Decimal(100) - Decimal(self.descuento)) / 100)
 
 
 class Linea(LineaBase):

@@ -38,7 +38,7 @@ from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_C
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, hoy)
 from .templatetags.formato import numero
-from .utils import MESES, actividades_sii, formatear_clp, formatear_rut, sin_ceros
+from .utils import MESES, actividades_sii, decimal_cl, formatear_clp, formatear_rut
 
 
 # --- Infraestructura ----------------------------------------------------------
@@ -445,7 +445,7 @@ def _editar_con_lineas(request, form, lineas, al_guardar, contexto):
         messages.success(request, "Guardado.")
         return redirect(destino)
     productos_js = {
-        str(p.pk): {"descripcion": p.descripcion or p.nombre, "precio": sin_ceros(p.precio),
+        str(p.pk): {"descripcion": p.descripcion or p.nombre, "precio": decimal_cl(p.precio),
                     "exento": p.exento}
         for p in request.sociedad.productos.filter(activo=True)}
     return render(request, "core/documento_form.html",

@@ -43,6 +43,20 @@
   const soloExento = tabla.dataset.soloExento === "1";
   const iva = Number(tabla.dataset.iva);
   const pesos = (n) => "$" + Math.round(n).toLocaleString("es-CL");
+  // Igual que en el servidor: coma decimal; el punto solo separa miles (1.250,5).
+  function leer(texto) {
+    let t = (texto || "").replace(/\s/g, "");
+    if (!t) return 0;
+    if (t.includes(".")) {
+      const grupos = t.split(",")[0].replace("-", "").split(".");
+      if (!/^\d{1,3}$/.test(grupos[0]) || !grupos.slice(1).every((g) => /^\d{3}$/.test(g))) return NaN;
+      t = t.replace(/\./g, "");
+    }
+    if (!/^-?\d*,?\d*$/.test(t)) return NaN;
+    return Number(t.replace(",", "."));
+  }
+  // Redondeo hacia arriba sin el ruido de los decimales binarios (3 × 14,1 = 42,3 → 43).
+  const arriba = (n) => Math.ceil(Number(n.toFixed(6)));
   const campo = (fila, nombre) => fila.querySelector(`[name$="-${nombre}"]`);
 
   function recalcular() {
@@ -50,9 +64,12 @@
     cuerpo.querySelectorAll("tr").forEach((fila) => {
       const borrar = campo(fila, "DELETE");
       if (borrar && borrar.checked) return;
-      const monto = Math.round((Number(campo(fila, "cantidad").value) || 0)
-        * (Number(campo(fila, "precio").value) || 0)
-        * (100 - (Number(campo(fila, "descuento").value) || 0)) / 100);
+      const valores = ["cantidad", "precio", "descuento"].map((n) => {
+        const casilla = campo(fila, n), v = leer(casilla.value);
+        casilla.classList.toggle("invalido", Number.isNaN(v));
+        return Number.isNaN(v) ? 0 : v;
+      });
+      const monto = arriba(valores[0] * valores[1] * (100 - valores[2]) / 100);
       if (soloExento || campo(fila, "exento").checked) exento += monto; else neto += monto;
     });
     const impuesto = Math.round(neto * iva / 100);
@@ -84,3 +101,14 @@
   });
   recalcular();
 })();
+
+// Casillas numéricas: un punto usado como decimal (14.5) se cambia por coma (14,5) al salir.
+document.addEventListener("focusout", (e) => {
+  const c = e.target;
+  if (!c.matches || !c.matches("input[data-decimal]")) return;
+  const v = c.value.trim();
+  if (/^-?\d+\.\d+$/.test(v) && !/^-?\d{1,3}(\.\d{3})+$/.test(v)) {
+    c.value = v.replace(".", ",");
+    c.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+});

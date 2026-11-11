@@ -3,7 +3,7 @@ import csv
 import re
 from functools import lru_cache
 from pathlib import Path
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
 
@@ -19,6 +19,36 @@ def actividades_sii():
     ruta = Path(__file__).parent / "recursos" / "actividades_sii.csv"
     with ruta.open(encoding="utf-8", newline="") as archivo:
         return [(f["codigo"], f["descripcion"]) for f in csv.DictReader(archivo, delimiter=";")]
+
+
+def redondear_arriba(valor):
+    """Redondea a pesos enteros hacia arriba: 42,3 -> 43 ; 42 -> 42."""
+    return int(Decimal(valor).quantize(Decimal("1"), rounding=ROUND_CEILING))
+
+
+def decimal_cl(valor):
+    """Número para editar, con coma decimal y sin separador de miles: 14.50 -> '14,5'."""
+    return sin_ceros(valor).replace(".", ",")
+
+
+def leer_decimal_cl(texto):
+    """Lee un número escrito a la chilena: coma decimal y punto opcional para miles.
+
+    '14,5' -> 14.5 ; '1.250' -> 1250 ; '1.250,75' -> 1250.75. Un punto que no separa
+    miles ('14.5') se rechaza en vez de adivinar.
+    """
+    t = re.sub(r"\s", "", str(texto or ""))
+    if not t:
+        return None
+    if "." in t:
+        entero = t.split(",")[0].lstrip("-")
+        grupos = entero.split(".")
+        if not (re.fullmatch(r"\d{1,3}", grupos[0]) and all(re.fullmatch(r"\d{3}", g) for g in grupos[1:])):
+            raise ValueError("Usa coma para los decimales, por ejemplo 14,5.")
+        t = t.replace(".", "")
+    if t.count(",") > 1 or not re.fullmatch(r"-?\d*,?\d*", t) or t in ("-", ",", "-,"):
+        raise ValueError("Escribe un número válido, por ejemplo 14,5.")
+    return Decimal(t.replace(",", "."))
 
 
 def redondear(valor):

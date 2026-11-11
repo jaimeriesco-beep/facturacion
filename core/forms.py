@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from decimal import Decimal
+
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -13,7 +15,46 @@ from django.forms import inlineformset_factory
 from .models import (Cliente, Documento, Linea, Pago, Producto, Recurrente,
                      RecurrenteLinea, Sociedad)
 from .auth import buscar_usuario
-from .utils import formatear_rut, sin_ceros
+from .utils import decimal_cl, formatear_rut, leer_decimal_cl
+
+
+class NumeroCL(forms.DecimalField):
+    """Número con coma decimal (14,5). Acepta punto solo como separador de miles."""
+    widget = forms.TextInput
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.widget.attrs.update({"inputmode": "decimal", "autocomplete": "off",
+                                  "data-decimal": "1"})
+        self.widget.attrs.pop("step", None)
+
+    def to_python(self, valor):
+        if valor in self.empty_values:
+            return None
+        if isinstance(valor, (int, float, Decimal)):
+            return super().to_python(valor)
+        try:
+            return super().to_python(str(leer_decimal_cl(valor)))
+        except ValueError as e:
+            raise ValidationError(str(e), code="invalid")
+
+    def prepare_value(self, valor):
+        if isinstance(valor, (int, float, Decimal)):
+            return decimal_cl(valor)
+        return valor
+
+    def widget_attrs(self, widget):
+        return {}
+
+
+def con_coma(form, *campos):
+    """Reemplaza campos decimales del formulario por casillas con coma decimal."""
+    for nombre in campos:
+        original = form.fields[nombre]
+        form.fields[nombre] = NumeroCL(
+            label=original.label, required=original.required, help_text=original.help_text,
+            max_digits=original.max_digits, decimal_places=original.decimal_places,
+            initial=original.initial)
 
 
 def casilla_rut(campo):
@@ -146,6 +187,11 @@ class ProductoForm(FormBase):
         model = Producto
         fields = ["codigo", "nombre", "descripcion", "unidad", "precio", "exento", "activo"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        con_coma(self, "precio")
+        self.fields["precio"].help_text = "Puedes usar decimales con coma, por ejemplo 14,5."
+
 
 class DocumentoForm(FormBase):
     class Meta:
@@ -205,9 +251,7 @@ class LineaForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["producto"].queryset = sociedad.productos.filter(activo=True)
         self.fields["producto"].empty_label = "— libre —"
-        for campo in ("cantidad", "precio", "descuento"):
-            if self.initial.get(campo) is not None:
-                self.initial[campo] = sin_ceros(self.initial[campo])
+        con_coma(self, "cantidad", "precio", "descuento")
 
 
 class RecurrenteLineaForm(LineaForm):

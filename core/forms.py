@@ -118,7 +118,26 @@ class ClienteForm(FormBase):
     class Meta:
         model = Cliente
         fields = ["nombre_fantasia", "razon_social", "rut", "giro", "direccion", "comuna",
-                  "ciudad", "email", "contacto", "telefono", "dias_pago", "activo"]
+                  "ciudad", "dias_pago", "activo", "contacto_unico",
+                  *(f"{rol}_{dato}" for rol, _ in Cliente.ROLES
+                    for dato in ("nombre", "email", "telefono"))]
+
+    def principales(self):
+        return [self[n] for n in self.fields
+                if n != "contacto_unico" and n.split("_")[0] not in dict(Cliente.ROLES)]
+
+    def contactos(self):
+        """Por cada rol: (clave, título, casillas)."""
+        return [(rol, titulo, [self[f"{rol}_{dato}"] for dato in ("nombre", "email", "telefono")])
+                for rol, titulo in Cliente.ROLES]
+
+    def clean(self):
+        datos = super().clean()
+        if datos.get("contacto_unico"):  # una sola persona: no se guardan datos de las otras dos
+            for rol in ("facturacion", "cobranza"):
+                for dato in ("nombre", "email", "telefono"):
+                    datos[f"{rol}_{dato}"] = ""
+        return datos
 
 
 class ProductoForm(FormBase):

@@ -1,0 +1,37 @@
+{% extends "core/form.html" %}
+{% block campos %}
+{{ form.non_field_errors }}
+<div class="campos">{% for campo in form.principales %}{% include "core/_campo.html" %}{% endfor %}</div>
+
+<h2 style="margin:26px 0 4px">Personas de contacto</h2>
+<div class="campo casilla" style="padding:6px 0 12px">
+  {{ form.contacto_unico }}{{ form.contacto_unico.label_tag }}
+  <div class="ayuda">{{ form.contacto_unico.help_text }}</div>
+</div>
+<div id="contactos">
+  {% for rol, titulo, casillas in form.contactos %}
+  <fieldset class="contacto" data-rol="{{ rol }}">
+    <legend data-titulo="{{ titulo }}">{{ titulo }}</legend>
+    <div class="campos">{% for campo in casillas %}{% include "core/_campo.html" %}{% endfor %}</div>
+  </fieldset>
+  {% endfor %}
+</div>
+<script>
+// Con «una sola persona», se muestra un único bloque de contacto.
+(function () {
+  const unico = document.getElementById("id_contacto_unico");
+  function ajustar() {
+    document.querySelectorAll("#contactos .contacto").forEach((bloque) => {
+      const principal = bloque.dataset.rol === "comercial";
+      bloque.hidden = unico.checked && !principal;
+      if (principal) {
+        const titulo = bloque.querySelector("legend");
+        titulo.textContent = unico.checked ? "Contacto (comercial, facturación y cobranza)" : titulo.dataset.titulo;
+      }
+    });
+  }
+  unico.addEventListener("change", ajustar);
+  ajustar();
+})();
+</script>
+{% endblock %}

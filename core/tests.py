@@ -634,3 +634,35 @@ class RecuperarClaveTests(Base):
         self.assertEqual(kw["headers"]["api-key"], "llave-de-prueba")
         self.assertEqual(kw["json"]["to"], [{"email": "a@ejemplo.cl"}])
         self.assertEqual(kw["json"]["sender"]["email"], "facturacion@ejemplo.cl")
+
+
+class ContactosTests(Base):
+    DATOS = {"razon_social": "Cliente Uno", "rut": "76.192.083-9", "dias_pago": 30, "activo": "on",
+             "comercial_nombre": "Ana Comercial", "comercial_email": "ana@ejemplo.cl", "comercial_telefono": "111",
+             "facturacion_nombre": "Beto Factura", "facturacion_email": "beto@ejemplo.cl", "facturacion_telefono": "222",
+             "cobranza_nombre": "Carla Cobro", "cobranza_email": "carla@ejemplo.cl", "cobranza_telefono": "333"}
+
+    def test_un_contacto_para_todo_o_uno_por_rol(self):
+        url = reverse("cliente_editar", args=[self.cli.pk])
+        r = self.client.get(url)
+        self.assertContains(r, "Personas de contacto")
+        self.assertContains(r, 'name="contacto_unico"')
+        self.assertContains(r, "checked")                       # por defecto, una sola persona
+        # Tres personas distintas.
+        self.assertRedirects(self.client.post(url, self.DATOS), reverse("clientes"))
+        self.cli.refresh_from_db()
+        self.assertFalse(self.cli.contacto_unico)
+        self.assertEqual(self.cli.contacto("cobranza"),
+                         {"nombre": "Carla Cobro", "email": "carla@ejemplo.cl", "telefono": "333"})
+        self.assertEqual(self.cli.contacto("facturacion")["email"], "beto@ejemplo.cl")
+        doc = self.factura(folio=9)
+        filas = list(load_workbook(BytesIO(self.client.get(reverse("cobranza"), {"formato": "excel"}).content)).active.values)
+        self.assertEqual(filas[1][-3:], ("Carla Cobro", "carla@ejemplo.cl", "333"))
+        # Una sola persona: cumple los tres roles y se descartan las otras dos.
+        self.client.post(url, {**self.DATOS, "contacto_unico": "on"})
+        self.cli.refresh_from_db()
+        for rol in ("comercial", "facturacion", "cobranza"):
+            self.assertEqual(self.cli.contacto(rol)["nombre"], "Ana Comercial")
+        self.assertEqual((self.cli.facturacion_nombre, self.cli.cobranza_email), ("", ""))
+        r = self.client.post(url, {**self.DATOS, "cobranza_email": "no-es-correo"})
+        self.assertContains(r, "correo electrónico válid")

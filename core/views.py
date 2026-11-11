@@ -75,13 +75,14 @@ def excel(nombre, encabezados, filas):
     return respuesta
 
 
-def formulario_simple(request, clase, instancia, titulo, volver, al_guardar=None, cancelar=None):
+def formulario_simple(request, clase, instancia, titulo, volver, al_guardar=None, cancelar=None,
+                      plantilla="core/form.html"):
     form = clase(request.POST or None, request.FILES or None, instance=instancia)
     if request.method == "POST" and form.is_valid():
         objeto = form.save()
         messages.success(request, "Guardado.")
         return redirect(al_guardar(objeto) if al_guardar else volver)
-    return render(request, "core/form.html", {
+    return render(request, plantilla, {
         "form": form, "titulo": titulo, "volver": cancelar or reverse(volver),
         "actividades": actividades_sii() if "giro" in form.fields else None})
 
@@ -340,7 +341,7 @@ def cliente_form(request, pk=None):
     return formulario_simple(
         request, ClienteForm, instancia, "Editar cliente" if pk else "Nuevo cliente", "clientes",
         al_guardar=(lambda c: f"{origen}?cliente={c.pk}") if origen else None,
-        cancelar=origen or None)
+        cancelar=origen or None, plantilla="core/cliente_form.html")
 
 
 @con_sociedad
@@ -813,11 +814,11 @@ def cobranza(request):
         return excel(f"cobranza_{hoy():%Y%m%d}", [
             "Cliente", "RUT", "Documento", "Folio", "Emisión", "Vencimiento", "Días vencido",
             "Tramo", "Total", "Notas de crédito", "Notas de débito", "Pagado", "Saldo",
-            "Contacto", "Correo"],
+            "Contacto de cobranza", "Correo", "Teléfono"],
             [[d.cliente.razon_social, formatear_rut(d.cliente.rut), d.tipo_corto, d.folio,
               d.fecha_emision, d.fecha_vencimiento, max(d.dias_vencido, 0),
               TRAMOS[_tramo(d.dias_vencido)], d.total, d.notas_credito, d.notas_debito,
-              d.pagado, d.saldo, d.cliente.contacto, d.cliente.email] for d in pendientes])
+              d.pagado, d.saldo, *d.cliente.contacto("cobranza").values()] for d in pendientes])
     tramos = [0] * 5
     for d in pendientes:
         tramos[_tramo(d.dias_vencido)] += d.saldo

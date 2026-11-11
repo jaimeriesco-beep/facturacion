@@ -101,9 +101,22 @@ class Cliente(ConRut):
     direccion = models.CharField("Dirección", max_length=70, blank=True)
     comuna = models.CharField(max_length=20, blank=True)
     ciudad = models.CharField(max_length=20, blank=True)
-    email = models.EmailField("Correo de facturación", blank=True)
-    contacto = models.CharField("Contacto de cobranza", max_length=80, blank=True)
-    telefono = models.CharField("Teléfono", max_length=20, blank=True)
+    # Personas de contacto por rol. Con contacto_unico, la persona «comercial» cumple los tres.
+    ROLES = [("comercial", "Contacto comercial"), ("facturacion", "Contacto de facturación"),
+             ("cobranza", "Contacto de cobranza")]
+    contacto_unico = models.BooleanField(
+        "Una sola persona para todo", default=True,
+        help_text="Desmárcalo para indicar personas distintas para lo comercial, "
+                  "la facturación y la cobranza.")
+    comercial_nombre = models.CharField("Nombre", max_length=80, blank=True)
+    comercial_email = models.EmailField("Correo", blank=True)
+    comercial_telefono = models.CharField("Teléfono", max_length=20, blank=True)
+    facturacion_nombre = models.CharField("Nombre", max_length=80, blank=True)
+    facturacion_email = models.EmailField("Correo", blank=True)
+    facturacion_telefono = models.CharField("Teléfono", max_length=20, blank=True)
+    cobranza_nombre = models.CharField("Nombre", max_length=80, blank=True)
+    cobranza_email = models.EmailField("Correo", blank=True)
+    cobranza_telefono = models.CharField("Teléfono", max_length=20, blank=True)
     dias_pago = models.PositiveSmallIntegerField(
         "Plazo de pago (días)", default=30,
         help_text="Días desde la emisión hasta el vencimiento. 0 = contado.")
@@ -112,6 +125,11 @@ class Cliente(ConRut):
     class Meta:
         # Varios locales pueden compartir RUT y razón social (misma empresa, otra dirección).
         ordering = ["nombre_fantasia", "razon_social"]
+
+    def contacto(self, rol):
+        """Persona de contacto para un rol: diccionario con nombre, email y telefono."""
+        origen = "comercial" if self.contacto_unico else rol
+        return {dato: getattr(self, f"{origen}_{dato}") for dato in ("nombre", "email", "telefono")}
 
     def __str__(self):
         if self.nombre_fantasia and self.nombre_fantasia.lower() != self.razon_social.lower():

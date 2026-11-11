@@ -1,0 +1,5 @@
+<div class="campo{% if campo.widget_type == 'checkbox' %} casilla{% endif %}">
+  {% if campo.widget_type == 'checkbox' %}{{ campo }}{{ campo.label_tag }}{% else %}{{ campo.label_tag }}{{ campo }}{% endif %}
+  {% if campo.help_text %}<div class="ayuda">{{ campo.help_text }}</div>{% endif %}
+  {{ campo.errors }}
+</div>

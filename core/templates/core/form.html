@@ -3,7 +3,7 @@
 {% block contenido %}
 <div class="titulo"><h1>{{ titulo }}</h1></div>
 <form method="post" class="panel" enctype="multipart/form-data">{% csrf_token %}
-  {% include "core/_campos.html" %}
+  {% block campos %}{% include "core/_campos.html" %}{% endblock %}
   <div class="acciones" style="margin-top:18px">
     <button class="primario" type="submit">{{ texto_boton|default:"Guardar" }}</button>
     <a class="boton" href="{{ volver }}">Cancelar</a>

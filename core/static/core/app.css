@@ -119,6 +119,9 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
 .en-linea > div { flex: 1; min-width: 120px; }
 
 .login { max-width: 340px; margin: 12vh auto; }
+.contacto { border: 1px solid var(--borde); border-radius: var(--radio); padding: 12px 16px 16px;
+  margin: 0 0 12px; }
+.contacto legend { font-weight: 700; padding: 0 6px; font-size: 13.5px; }
 .chico, .boton.chico { padding: 4px 10px; font-size: 13px; }
 .fila-acciones { white-space: nowrap; text-align: right; }
 .ventana { border: 0; border-radius: 10px; padding: 0; width: min(780px, calc(100vw - 24px));

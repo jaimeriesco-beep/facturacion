@@ -123,6 +123,8 @@ if PRODUCCION:
     SESSION_COOKIE_AGE = 60 * 60 * 12  # la sesión dura 12 horas
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+AUTHENTICATION_BACKENDS = ["core.auth.UsuarioOCorreo"]
+
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "inicio"
 LOGOUT_REDIRECT_URL = "login"

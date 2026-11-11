@@ -11,6 +11,7 @@ from django.forms import inlineformset_factory
 
 from .models import (Cliente, Documento, Linea, Pago, Producto, Recurrente,
                      RecurrenteLinea, Sociedad)
+from .auth import buscar_usuario
 from .utils import formatear_rut, sin_ceros
 
 
@@ -31,7 +32,9 @@ class IngresoForm(AuthenticationForm):
     """Ingreso con freno a los intentos repetidos de adivinar la clave."""
 
     def clean(self):
-        llave = "ingreso:" + (self.cleaned_data.get("username") or "").strip().lower()
+        escrito = (self.cleaned_data.get("username") or "").strip().lower()
+        conocido = buscar_usuario(escrito)  # usuario y correo cuentan como la misma persona
+        llave = "ingreso:" + (conocido.username.lower() if conocido else escrito)
         if cache.get(llave, 0) >= settings.INTENTOS_DE_INGRESO:
             raise ValidationError(
                 "Demasiados intentos fallidos. Espera 15 minutos y vuelve a intentar.",
@@ -266,7 +269,15 @@ class UsuarioForm(forms.ModelForm):
         fields = ["username", "first_name", "last_name", "email", "is_superuser", "is_active"]
         labels = {"is_superuser": "Administrador", "is_active": "Activo"}
         help_texts = {"username": "Con este nombre se inicia sesión.",
+                      "email": "También sirve para iniciar sesión.",
                       "is_superuser": "Puede crear y editar usuarios.", "is_active": ""}
+
+    def clean_email(self):
+        correo = self.cleaned_data["email"].strip()
+        repetido = get_user_model().objects.filter(email__iexact=correo).exclude(pk=self.instance.pk)
+        if correo and repetido.exists():
+            raise ValidationError("Ya hay otro usuario con ese correo.")
+        return correo
 
     def clean_clave(self):
         clave = self.cleaned_data["clave"]

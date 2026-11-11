@@ -496,7 +496,7 @@ class IngresoTests(Base):
         self.client.logout()
         for _ in range(5):
             r = self.client.post(reverse("login"), {"username": "Jaime", "password": "mala"})
-            self.assertContains(r, "Usuario o clave incorrectos")
+            self.assertContains(r, "correo o clave incorrectos")
         r = self.client.post(reverse("login"), {"username": "jaime", "password": "clave-segura-123"})
         self.assertContains(r, "Demasiados intentos fallidos")   # ni la clave correcta entra
         cache.clear()
@@ -548,3 +548,37 @@ class CotizacionTests(Base):
         self.assertEqual((factura.total, factura.cliente), (59500, sin_rut))
         self.assertIn("Según cotización N° 1", factura.observaciones)
         self.assertIn("no tiene RUT", " ".join(factura.errores_para_emitir()))
+
+
+class IngresoConCorreoTests(Base):
+    def test_ingresa_con_usuario_o_con_correo(self):
+        from django.core.cache import cache
+        cache.clear()
+        Usuario = get_user_model()
+        Usuario.objects.filter(username="jaime").update(email="Jaime@Ejemplo.cl", is_superuser=True)
+        self.client.logout()
+        for identificador in ("jaime@ejemplo.cl", "JAIME@EJEMPLO.CL", "Jaime", "jaime"):
+            r = self.client.post(reverse("login"), {"username": identificador, "password": "clave-segura-123"})
+            self.assertRedirects(r, reverse("inicio"), msg_prefix=identificador)
+            self.client.logout()
+        r = self.client.post(reverse("login"), {"username": "jaime@ejemplo.cl", "password": "mala"})
+        self.assertContains(r, "correo o clave incorrectos")
+        r = self.client.post(reverse("login"), {"username": "nadie@ejemplo.cl", "password": "clave-segura-123"})
+        self.assertContains(r, "correo o clave incorrectos")
+        # El bloqueo cuenta juntos los intentos por usuario y por correo.
+        cache.clear()
+        for identificador in ("jaime", "jaime@ejemplo.cl", "JAIME", "jaime@ejemplo.cl", "jaime"):
+            self.client.post(reverse("login"), {"username": identificador, "password": "mala"})
+        r = self.client.post(reverse("login"), {"username": "jaime@ejemplo.cl", "password": "clave-segura-123"})
+        self.assertContains(r, "Demasiados intentos fallidos")
+        cache.clear()
+        # Un usuario inactivo no entra, y no se aceptan dos usuarios con el mismo correo.
+        self.client.login(username="jaime", password="clave-segura-123")
+        r = self.client.post(reverse("usuario_nuevo"), {
+            "username": "otro", "email": "jaime@ejemplo.cl", "clave": "una-clave-larga-2026",
+            "is_superuser": "on", "is_active": "on"})
+        self.assertContains(r, "Ya hay otro usuario con ese correo")
+        Usuario.objects.create_user("baja", email="baja@ejemplo.cl", password="clave-segura-123", is_active=False)
+        self.client.logout()
+        r = self.client.post(reverse("login"), {"username": "baja@ejemplo.cl", "password": "clave-segura-123"})
+        self.assertEqual(r.status_code, 200)

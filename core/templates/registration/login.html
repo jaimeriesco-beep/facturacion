@@ -9,9 +9,9 @@
 <body>
 <div class="login panel">
   <h1 style="margin-bottom:16px">Facturación</h1>
-  {% if form.errors %}<ul class="mensajes"><li class="error">{% if form.non_field_errors.as_data.0.code == "bloqueado" %}{{ form.non_field_errors.0 }}{% else %}Usuario o clave incorrectos.{% endif %}</li></ul>{% endif %}
+  {% if form.errors %}<ul class="mensajes"><li class="error">{% if form.non_field_errors.as_data.0.code == "bloqueado" %}{{ form.non_field_errors.0 }}{% else %}Usuario, correo o clave incorrectos.{% endif %}</li></ul>{% endif %}
   <form method="post">{% csrf_token %}
-    <div class="campo" style="margin-bottom:12px"><label for="id_username">Usuario</label>{{ form.username }}</div>
+    <div class="campo" style="margin-bottom:12px"><label for="id_username">Usuario o correo</label>{{ form.username }}</div>
     <div class="campo" style="margin-bottom:16px"><label for="id_password">Clave</label>{{ form.password }}</div>
     <input type="hidden" name="next" value="{{ next }}">
     <button class="primario" type="submit" style="width:100%">Ingresar</button>

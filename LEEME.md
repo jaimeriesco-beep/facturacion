@@ -74,8 +74,11 @@ Límites del plan gratuito: la app se duerme tras 15 minutos sin uso y tarda
 cerca de un minuto en despertar. Neon guarda solo 6 horas de historial, así que
 conviene bajar un respaldo cada cierto tiempo desde Usuarios → Descargar respaldo.
 
-En el servidor la app exige HTTPS y **verificación en dos pasos**. Los datos del
-servidor son independientes de los de la app local.
+En el servidor la app exige HTTPS. Tras 5 claves erradas seguidas, el usuario
+queda bloqueado 15 minutos. La verificación en dos pasos (app de autenticación)
+está desactivada; se activa definiendo en Render la variable
+`FACTURACION_DOS_PASOS=1`. Los datos del servidor son independientes de los de
+la app local.
 
 ## Para quien mantenga el código
 

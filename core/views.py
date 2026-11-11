@@ -559,7 +559,7 @@ def _descarga(contenido, tipo, nombre, adjunto=True):
 
 
 def _nombre_archivo(doc):
-    return f"{doc.sociedad.rut}_T{doc.tipo}_F{doc.folio}"
+    return f"{doc.sociedad.rut}_T{doc.tipo}_" + (f"F{doc.folio}" if doc.folio else f"borrador{doc.pk}")
 
 
 @con_sociedad
@@ -572,12 +572,19 @@ def documento_xml(request, pk):
 
 @con_sociedad
 def documento_pdf(request, pk):
+    """PDF del documento. Sin timbre si es borrador o si se emitió en el portal del SII."""
     doc = _documento(request, pk)
-    if not doc.es_propio:
-        return redirect("documento", pk=pk)
-    cedible = request.GET.get("cedible") == "1"
+    cedible = request.GET.get("cedible") == "1" and doc.es_propio
     nombre = _nombre_archivo(doc) + ("_cedible" if cedible else "") + ".pdf"
-    return _descarga(generar_pdf(doc, cedible=cedible), "application/pdf", nombre, adjunto=False)
+    return _descarga(generar_pdf(doc, cedible=cedible), "application/pdf", nombre,
+                     adjunto=request.GET.get("descargar") == "1")
+
+
+@con_sociedad
+def documento_vista(request, pk):
+    """Vista rápida del documento, para mostrarla en una ventana sobre el listado."""
+    doc = _documento(request, pk)
+    return render(request, "core/_vista.html", {"doc": doc, "lineas": doc.lineas.all()})
 
 
 @require_POST

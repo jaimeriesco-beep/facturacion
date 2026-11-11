@@ -1,0 +1,55 @@
+{% load formato %}
+<div class="hoja">
+  <div class="hoja-cabeza">
+    <div>
+      {% if doc.sociedad.logo %}<img src="{% url 'sociedad_logo' doc.sociedad.pk %}" alt="" class="hoja-logo">{% endif %}
+      <strong>{{ doc.sociedad.razon_social }}</strong>
+      <div class="suave">{{ doc.sociedad.giro }}</div>
+      <div class="suave">{{ doc.sociedad.direccion }}{% if doc.sociedad.comuna %}, {{ doc.sociedad.comuna }}{% endif %}</div>
+    </div>
+    <div class="hoja-recuadro">
+      <div>R.U.T.: {{ doc.sociedad.rut|rut }}</div>
+      <div>{{ doc.get_tipo_display|upper }}</div>
+      <div>{% if doc.folio %}N° {{ doc.folio }}{% else %}BORRADOR{% endif %}</div>
+    </div>
+  </div>
+  <div style="margin:10px 0">
+    <span class="etiqueta e-{{ doc.estado }}">{{ doc.get_estado_display }}</span>
+    {% if doc.estado_cobro %}<span class="etiqueta e-{{ doc.estado_cobro }}">{{ doc.estado_cobro|capfirst }}</span>{% endif %}
+    {% if doc.es_prueba %}<span class="etiqueta e-prueba">Prueba</span>{% endif %}
+    {% if doc.estado_sii %}<span class="etiqueta e-{{ doc.estado_sii }}">SII: {{ doc.get_estado_sii_display }}</span>{% endif %}
+  </div>
+  <dl class="datos hoja-datos">
+    <dt>Señor(es)</dt><dd>{{ doc.cliente.razon_social }}{% if doc.cliente.nombre_fantasia and doc.cliente.nombre_fantasia != doc.cliente.razon_social %} <span class="suave">({{ doc.cliente.nombre_fantasia }})</span>{% endif %}</dd>
+    <dt>R.U.T.</dt><dd>{{ doc.cliente.rut|rut|default:"Falta RUT" }}</dd>
+    <dt>Giro</dt><dd>{{ doc.cliente.giro|default:"—" }}</dd>
+    <dt>Dirección</dt><dd>{{ doc.cliente.direccion|default:"—" }}{% if doc.cliente.comuna %}, {{ doc.cliente.comuna }}{% endif %}</dd>
+    <dt>Emisión</dt><dd>{{ doc.fecha_emision|date:"d/m/Y" }}</dd>
+    {% if doc.es_factura %}<dt>Vencimiento</dt><dd>{{ doc.fecha_vencimiento|date:"d/m/Y"|default:"—" }}</dd>{% endif %}
+    {% if doc.es_guia %}<dt>Traslado</dt><dd>{{ doc.get_ind_traslado_display|default:"—" }}</dd>{% endif %}
+    {% if doc.referencia %}<dt>Referencia</dt><dd>{{ doc.referencia }}{% if doc.razon_referencia %} · {{ doc.razon_referencia }}{% endif %}</dd>{% endif %}
+    {% if doc.observaciones %}<dt>Observaciones</dt><dd>{{ doc.observaciones }}</dd>{% endif %}
+  </dl>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr><th>Descripción</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Desc.</th><th class="num">Monto</th></tr></thead>
+    <tbody>
+    {% for l in lineas %}
+      <tr><td>{{ l.descripcion }}{% if l.exento and doc.tipo != 34 %} <span class="suave">(exento)</span>{% endif %}</td><td class="num">{{ l.cantidad|numero }}</td><td class="num">${{ l.precio|numero }}</td><td class="num">{% if l.descuento %}{{ l.descuento|numero }}%{% else %}—{% endif %}</td><td class="num">{{ l.monto|clp }}</td></tr>
+    {% empty %}<tr><td colspan="5" class="vacio">Sin líneas de detalle.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <table class="totales">
+    {% if doc.neto %}<tr><td>Neto</td><td class="num">{{ doc.neto|clp }}</td></tr>{% endif %}
+    {% if doc.exento %}<tr><td>Exento</td><td class="num">{{ doc.exento|clp }}</td></tr>{% endif %}
+    {% if doc.iva %}<tr><td>IVA 19%</td><td class="num">{{ doc.iva|clp }}</td></tr>{% endif %}
+    <tr class="total"><td>Total</td><td class="num">{{ doc.total|clp }}</td></tr>
+    {% if doc.estado_cobro %}<tr><td>Saldo por cobrar</td><td class="num">{{ doc.saldo|clp }}</td></tr>{% endif %}
+  </table>
+</div>
+<div class="acciones" style="margin-top:14px;justify-content:flex-end">
+  <a class="boton" href="{% url 'documento' doc.pk %}">Abrir documento</a>
+  <a class="boton primario" href="{% url 'documento_pdf' doc.pk %}?descargar=1">Descargar PDF</a>
+</div>

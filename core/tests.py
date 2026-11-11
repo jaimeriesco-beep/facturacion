@@ -459,3 +459,41 @@ class DosPasosTests(Base):
         for _ in range(5):
             r = self.client.post(reverse("dos_pasos"), {"codigo": "111111"})
         self.assertRedirects(r, reverse("login"))  # cinco fallos cierran la sesión
+
+
+class VerYPdfTests(Base):
+    def test_botones_ver_y_pdf_en_cada_documento(self):
+        borrador = self.factura()
+        emitida = self.factura(folio=77)
+        r = self.client.get(reverse("documentos"))
+        for doc in (borrador, emitida):
+            self.assertContains(r, f'data-ver="/documentos/{doc.pk}/vista/"')
+            self.assertContains(r, f'href="/documentos/{doc.pk}/pdf/?descargar=1"')
+        vista = self.client.get(reverse("documento_vista", args=[emitida.pk]))
+        self.assertContains(vista, "N° 77")
+        self.assertContains(vista, "$119.000")
+        self.assertNotContains(vista, "<html")
+        self.assertContains(self.client.get(reverse("documento_vista", args=[borrador.pk])), "BORRADOR")
+        # PDF para todos: sin timbre en borradores y en lo emitido desde el portal del SII.
+        for doc in (borrador, emitida):
+            r = self.client.get(reverse("documento_pdf", args=[doc.pk]), {"descargar": "1"})
+            self.assertTrue(r.content.startswith(b"%PDF"))
+            self.assertIn("attachment", r.headers["Content-Disposition"])
+        self.assertIn("borrador", self.client.get(
+            reverse("documento_pdf", args=[borrador.pk])).headers["Content-Disposition"])
+
+
+class IngresoTests(Base):
+    def test_sin_dos_pasos_y_con_bloqueo_por_intentos(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.assertEqual(self.client.get(reverse("inicio")).status_code, 200)  # sin segundo paso
+        self.client.logout()
+        for _ in range(5):
+            r = self.client.post(reverse("login"), {"username": "Jaime", "password": "mala"})
+            self.assertContains(r, "Usuario o clave incorrectos")
+        r = self.client.post(reverse("login"), {"username": "jaime", "password": "clave-segura-123"})
+        self.assertContains(r, "Demasiados intentos fallidos")   # ni la clave correcta entra
+        cache.clear()
+        r = self.client.post(reverse("login"), {"username": "jaime", "password": "clave-segura-123"})
+        self.assertRedirects(r, reverse("inicio"))

@@ -114,6 +114,20 @@ input:focus, select:focus { outline: 2px solid var(--verde-claro); border-color:
 .en-linea > div { flex: 1; min-width: 120px; }
 
 .login { max-width: 340px; margin: 12vh auto; }
+.chico, .boton.chico { padding: 4px 10px; font-size: 13px; }
+.fila-acciones { white-space: nowrap; text-align: right; }
+.ventana { border: 0; border-radius: 10px; padding: 0; width: min(780px, calc(100vw - 24px));
+  max-height: calc(100vh - 40px); box-shadow: 0 20px 60px rgba(0,0,0,.3); color: var(--texto); }
+.ventana::backdrop { background: rgba(20, 40, 30, .55); }
+.ventana-barra { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px 18px; border-bottom: 1px solid var(--borde); position: sticky; top: 0; background: #fff; }
+#vista-cuerpo { padding: 18px; }
+.hoja { border: 1px solid var(--borde); border-radius: var(--radio); padding: 18px; }
+.hoja-cabeza { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.hoja-logo { display: block; height: 44px; margin-bottom: 8px; }
+.hoja-recuadro { border: 2px solid #c41a1a; color: #c41a1a; font-weight: 700; text-align: center;
+  padding: 10px 16px; align-self: flex-start; line-height: 1.6; }
+.hoja-datos { margin: 6px 0 14px; }
 .menu-boton { display: none; }
 .totales { max-width: 100%; }
 

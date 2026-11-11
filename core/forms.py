@@ -1,7 +1,10 @@
 from datetime import timedelta
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import AuthenticationForm
+from django.core.cache import cache
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
@@ -22,6 +25,24 @@ def casilla_rut(campo):
 def etiqueta_cliente(cliente):
     """Texto del cliente en los selectores: con RUT, para poder buscarlo por él."""
     return f"{cliente} — {cliente.rut_formateado}" if cliente.rut else f"{cliente} — sin RUT"
+
+
+class IngresoForm(AuthenticationForm):
+    """Ingreso con freno a los intentos repetidos de adivinar la clave."""
+
+    def clean(self):
+        llave = "ingreso:" + (self.cleaned_data.get("username") or "").strip().lower()
+        if cache.get(llave, 0) >= settings.INTENTOS_DE_INGRESO:
+            raise ValidationError(
+                "Demasiados intentos fallidos. Espera 15 minutos y vuelve a intentar.",
+                code="bloqueado")
+        try:
+            datos = super().clean()
+        except ValidationError:
+            cache.set(llave, cache.get(llave, 0) + 1, settings.BLOQUEO_DE_INGRESO)
+            raise
+        cache.delete(llave)
+        return datos
 
 
 class Fecha(forms.DateInput):

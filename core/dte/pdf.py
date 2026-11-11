@@ -31,9 +31,28 @@ def _timbre(xml):
     return ImageReader(pdf417gen.render_image(codigos, scale=3, ratio=3, padding=0))
 
 
+def _totales_pdf(c, doc, base, derecha):
+    totales = [("Monto neto", doc.neto), ("Monto exento", doc.exento), ("IVA 19%", doc.iva)]
+    ty = base + 30 * mm
+    c.setFont("Helvetica", 9)
+    for rotulo, valor in totales:
+        if valor:
+            c.drawString(derecha - 62 * mm, ty, rotulo); c.drawRightString(derecha - 1 * mm, ty, formatear_clp(valor))
+            ty -= 5.5 * mm
+    c.line(derecha - 62 * mm, ty + 3.5 * mm, derecha, ty + 3.5 * mm)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(derecha - 62 * mm, ty - 1.5 * mm, "TOTAL"); c.drawRightString(derecha - 1 * mm, ty - 1.5 * mm, formatear_clp(doc.total))
+
+
 def _pagina(c, doc, lineas, cedible):
     soc, cli = doc.sociedad, doc.cliente
     y = ALTO - MARGEN
+    if not doc.folio:  # marca de agua, al fondo de la página
+        c.saveState()
+        c.setFillColor(colors.Color(0.9, 0.9, 0.9)); c.setFont("Helvetica-Bold", 90)
+        c.translate(ANCHO / 2, ALTO / 2); c.rotate(35)
+        c.drawCentredString(0, -30, "BORRADOR")
+        c.restoreState()
 
     # Recuadro rojo del SII.
     caja_x, caja_w, caja_h = ANCHO - MARGEN - 75 * mm, 75 * mm, 30 * mm
@@ -47,9 +66,11 @@ def _pagina(c, doc, lineas, cedible):
         c.setFont("Helvetica-Bold", 11)
         c.drawCentredString(centro, y - 14.5 * mm - i * 4.6 * mm, parte)
     c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(centro, y - 26 * mm, f"N° {doc.folio}")
+    c.drawCentredString(centro, y - 26 * mm, f"N° {doc.folio}" if doc.folio else "BORRADOR")
     c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(centro, y - caja_h - 5 * mm, f"S.I.I. - {(soc.oficina_sii or soc.comuna).upper()}")
+    if soc.oficina_sii or soc.comuna:
+        c.drawCentredString(centro, y - caja_h - 5 * mm,
+                            f"S.I.I. - {(soc.oficina_sii or soc.comuna).upper()}")
 
     # Emisor (con logo si la sociedad tiene uno).
     c.setFillColor(colors.black)
@@ -142,6 +163,22 @@ def _pagina(c, doc, lineas, cedible):
     # Pie: timbre a la izquierda, totales a la derecha.
     base = MARGEN + (38 * mm if cedible else 0)
     timbre_w, timbre_h = 62 * mm, 28 * mm
+    if not doc.es_propio:
+        # Sin timbre: borrador, o documento emitido en el portal del SII y solo registrado aquí.
+        if doc.folio:
+            avisos = ["Copia de registro interno, sin timbre electrónico.",
+                      "El documento válido es el emitido en el portal del SII."]
+        else:
+            avisos = ["BORRADOR: documento no emitido.", "Sin validez tributaria."]
+        c.setDash(3, 2); c.setStrokeColor(GRIS)
+        c.rect(MARGEN, base + 9 * mm, timbre_w, timbre_h)
+        c.setDash(); c.setStrokeColor(colors.black)
+        c.setFillColor(GRIS); c.setFont("Helvetica-Bold", 8)
+        for i, texto in enumerate(avisos):
+            c.drawCentredString(MARGEN + timbre_w / 2, base + 25 * mm - i * 5 * mm, texto)
+        c.setFillColor(colors.black)
+        _totales_pdf(c, doc, base, derecha)
+        return
     c.drawImage(_timbre(doc.xml_firmado), MARGEN, base + 9 * mm, timbre_w, timbre_h)
     c.setFont("Helvetica-Bold", 7.5)
     c.drawCentredString(MARGEN + timbre_w / 2, base + 5 * mm, "Timbre Electrónico SII")
@@ -149,16 +186,7 @@ def _pagina(c, doc, lineas, cedible):
     anio = soc.resolucion_fecha.year if soc.resolucion_fecha else ""
     c.drawCentredString(MARGEN + timbre_w / 2, base + 1.5 * mm,
                         f"Res. {soc.resolucion_numero} de {anio} · Verifique documento: www.sii.cl")
-    totales = [("Monto neto", doc.neto), ("Monto exento", doc.exento), ("IVA 19%", doc.iva)]
-    ty = base + 30 * mm
-    c.setFont("Helvetica", 9)
-    for rotulo, valor in totales:
-        if valor:
-            c.drawString(derecha - 62 * mm, ty, rotulo); c.drawRightString(derecha - 1 * mm, ty, formatear_clp(valor))
-            ty -= 5.5 * mm
-    c.line(derecha - 62 * mm, ty + 3.5 * mm, derecha, ty + 3.5 * mm)
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(derecha - 62 * mm, ty - 1.5 * mm, "TOTAL"); c.drawRightString(derecha - 1 * mm, ty - 1.5 * mm, formatear_clp(doc.total))
+    _totales_pdf(c, doc, base, derecha)
 
     if cedible:
         # Acuse de recibo exigido en la copia cedible (Ley 19.983).
@@ -187,7 +215,7 @@ def generar_pdf(doc, cedible=False) -> bytes:
     c.setTitle(str(doc)); c.setAuthor(doc.sociedad.razon_social)
     lineas = list(doc.lineas.all())
     _pagina(c, doc, lineas, False)
-    if cedible and (doc.es_factura or doc.es_guia):
+    if cedible and doc.es_propio and (doc.es_factura or doc.es_guia):
         c.showPage()
         _pagina(c, doc, lineas, True)
     c.save()

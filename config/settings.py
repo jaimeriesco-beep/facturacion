@@ -102,8 +102,14 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Verificación en dos pasos (app de autenticación). Obligatoria en el servidor.
-EXIGIR_DOS_PASOS = os.environ.get("FACTURACION_DOS_PASOS", "1" if PRODUCCION else "0") == "1"
+# Verificación en dos pasos (app de autenticación). Desactivada a pedido del 10-11-2026.
+# Para volver a exigirla, definir la variable de entorno FACTURACION_DOS_PASOS=1.
+EXIGIR_DOS_PASOS = os.environ.get("FACTURACION_DOS_PASOS", "0") == "1"
+
+# Protección contra intentos de adivinar la clave: tras 5 fallos seguidos, el usuario
+# queda bloqueado por 15 minutos.
+INTENTOS_DE_INGRESO = 5
+BLOQUEO_DE_INGRESO = 15 * 60
 
 if PRODUCCION:
     STORAGES = {

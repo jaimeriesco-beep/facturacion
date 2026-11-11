@@ -743,3 +743,28 @@ class MarketingTests(Base):
         cuerpo = BrevoBackend._cuerpo(m)
         self.assertEqual(cuerpo["sender"], {"name": "Verde Vertical", "email": "facturacion@ejemplo.cl"})
         self.assertEqual(cuerpo["replyTo"], {"email": "contacto@verdevertical.cl"})
+
+
+class EliminarProductoTests(Base):
+    def test_basurero_elimina_sin_afectar_facturas(self):
+        prod = Producto.objects.create(sociedad=self.soc, nombre="Albahaca", precio=1000)
+        Producto.objects.create(sociedad=self.soc, nombre="Granel", precio="14.5")
+        self.assertContains(self.client.get(reverse("productos")), "$14,5")
+        doc = Documento.objects.create(sociedad=self.soc, cliente=self.cli)
+        Linea.objects.create(documento=doc, producto=prod, descripcion="Albahaca", cantidad=2, precio=1000)
+        doc.recalcular()
+        r = self.client.get(reverse("productos"))
+        self.assertContains(r, f'action="/productos/{prod.pk}/eliminar/"')
+        self.assertContains(r, 'class="basurero"')
+        self.assertNotContains(self.client.get(reverse("clientes")), "basurero")   # solo en productos
+        self.assertEqual(self.client.get(reverse("producto_eliminar", args=[prod.pk])).status_code, 405)
+        otra = Sociedad.objects.create(rut="76086428-5", razon_social="Otra")
+        ajeno = Producto.objects.create(sociedad=otra, nombre="Ajeno")
+        self.client.post(reverse("cambiar_sociedad"), {"sociedad": self.soc.pk})
+        self.assertEqual(self.client.post(reverse("producto_eliminar", args=[ajeno.pk])).status_code, 404)
+        r = self.client.post(reverse("producto_eliminar", args=[prod.pk]), follow=True)
+        self.assertContains(r, "Producto «Albahaca» eliminado")
+        self.assertFalse(Producto.objects.filter(pk=prod.pk).exists())
+        linea = Linea.objects.get(documento=doc)
+        self.assertEqual((linea.producto, linea.descripcion, Documento.objects.get(pk=doc.pk).total),
+                         (None, "Albahaca", 2380))

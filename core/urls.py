@@ -20,6 +20,7 @@ urlpatterns = [
     path("productos/", v.productos, name="productos"),
     path("productos/nuevo/", v.producto_form, name="producto_nuevo"),
     path("productos/<int:pk>/", v.producto_form, name="producto_editar"),
+    path("productos/<int:pk>/eliminar/", v.producto_eliminar, name="producto_eliminar"),
     path("documentos/", v.documentos, name="documentos"),
     path("documentos/nuevo/<int:tipo>/", v.documento_nuevo, name="documento_nuevo"),
     path("cotizaciones/", v.documentos, {"cotizaciones": True}, name="cotizaciones"),

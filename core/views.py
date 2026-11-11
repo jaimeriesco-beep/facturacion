@@ -36,6 +36,7 @@ from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_C
                      NOTA_DEBITO, NOTAS,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, hoy)
+from .templatetags.formato import numero
 from .utils import MESES, actividades_sii, formatear_clp, formatear_rut, sin_ceros
 
 
@@ -89,9 +90,13 @@ def formulario_simple(request, clase, instancia, titulo, volver, al_guardar=None
         "actividades": actividades_sii() if "giro" in form.fields else None})
 
 
-def lista(request, titulo, columnas, filas, nuevo, texto_nuevo, vacio, extra=()):
+def lista(request, titulo, columnas, filas, nuevo, texto_nuevo, vacio, extra=(), eliminar=None):
+    """Listado genérico. Con `eliminar` (función fila -> (url, nombre)) agrega un basurero."""
+    filas = [{"url": url, "celdas": celdas,
+              "eliminar": eliminar(i) if eliminar else None} for i, (url, celdas) in enumerate(filas)]
     return render(request, "core/lista.html", {
         "titulo": titulo, "columnas": columnas, "filas": filas, "extra": extra,
+        "con_eliminar": bool(eliminar),
         "nuevo": reverse(nuevo), "texto_nuevo": texto_nuevo, "vacio": vacio})
 
 
@@ -348,14 +353,27 @@ def cliente_form(request, pk=None):
 
 @con_sociedad
 def productos(request):
+    productos = list(request.sociedad.productos.all())
     filas = [(reverse("producto_editar", args=[p.pk]),
-              [p.nombre, p.codigo, p.unidad, formatear_clp(p.precio),
+              [p.nombre, p.codigo, p.unidad, "$" + numero(p.precio),
                "Exento" if p.exento else "Afecto", si_no(p.activo)])
-             for p in request.sociedad.productos.all()]
+             for p in productos]
     return lista(request, "Productos (SKU)",
                  ["Nombre", "SKU", "Unidad", "Precio neto", "IVA", "Activo"],
                  filas, "producto_nuevo", "Nuevo producto",
-                 "Aún no hay productos.")
+                 "Aún no hay productos.",
+                 eliminar=lambda i: (reverse("producto_eliminar", args=[productos[i].pk]),
+                                     productos[i].nombre))
+
+
+@require_POST
+@con_sociedad
+def producto_eliminar(request, pk):
+    producto = get_object_or_404(Producto, pk=pk, sociedad=request.sociedad)
+    nombre = producto.nombre
+    producto.delete()  # las facturas y recurrentes que lo usaban conservan su detalle
+    messages.success(request, f"Producto «{nombre}» eliminado.")
+    return redirect("productos")
 
 
 @con_sociedad

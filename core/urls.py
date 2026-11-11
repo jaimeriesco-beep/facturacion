@@ -17,6 +17,7 @@ urlpatterns = [
     path("usuarios/nuevo/", v.usuario_form, name="usuario_nuevo"),
     path("usuarios/<int:pk>/", v.usuario_form, name="usuario_editar"),
     path("clientes/<int:pk>/", v.cliente_form, name="cliente_editar"),
+    path("clientes/<int:pk>/eliminar/", v.cliente_eliminar, name="cliente_eliminar"),
     path("productos/", v.productos, name="productos"),
     path("productos/nuevo/", v.producto_form, name="producto_nuevo"),
     path("productos/<int:pk>/", v.producto_form, name="producto_editar"),

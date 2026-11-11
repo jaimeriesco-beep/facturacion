@@ -90,13 +90,14 @@ def formulario_simple(request, clase, instancia, titulo, volver, al_guardar=None
         "actividades": actividades_sii() if "giro" in form.fields else None})
 
 
-def lista(request, titulo, columnas, filas, nuevo, texto_nuevo, vacio, extra=(), eliminar=None):
+def lista(request, titulo, columnas, filas, nuevo, texto_nuevo, vacio, extra=(), eliminar=None,
+          aviso_eliminar="No se puede deshacer."):
     """Listado genérico. Con `eliminar` (función fila -> (url, nombre)) agrega un basurero."""
     filas = [{"url": url, "celdas": celdas,
               "eliminar": eliminar(i) if eliminar else None} for i, (url, celdas) in enumerate(filas)]
     return render(request, "core/lista.html", {
         "titulo": titulo, "columnas": columnas, "filas": filas, "extra": extra,
-        "con_eliminar": bool(eliminar),
+        "con_eliminar": bool(eliminar), "aviso_eliminar": aviso_eliminar,
         "nuevo": reverse(nuevo), "texto_nuevo": texto_nuevo, "vacio": vacio})
 
 
@@ -161,15 +162,33 @@ def sociedad_form(request, pk=None):
 
 @con_sociedad
 def clientes(request):
+    todos = list(request.sociedad.clientes.all())
     filas = [(reverse("cliente_editar", args=[c.pk]),
               [c.nombre_fantasia or c.razon_social, c.razon_social,
                c.rut_formateado or "Falta RUT", c.giro or "Falta giro", c.comuna,
                f"{c.dias_pago} días", si_no(c.activo)])
-             for c in request.sociedad.clientes.all()]
+             for c in todos]
     return lista(request, "Clientes",
                  ["Nombre", "Razón social", "RUT", "Giro", "Comuna", "Plazo de pago", "Activo"],
                  filas, "cliente_nuevo", "Nuevo cliente", "Aún no hay clientes.",
-                 extra=[(reverse("clientes_importar"), "Importar desde Excel")])
+                 extra=[(reverse("clientes_importar"), "Importar desde Excel")],
+                 eliminar=lambda i: (reverse("cliente_eliminar", args=[todos[i].pk]), str(todos[i])))
+
+
+@require_POST
+@con_sociedad
+def cliente_eliminar(request, pk):
+    cliente = get_object_or_404(Cliente, pk=pk, sociedad=request.sociedad)
+    if cliente.documentos.exists() or cliente.recurrentes.exists():
+        # Un cliente con historial no se borra: se perderían sus facturas, cotizaciones y cobranza.
+        messages.error(request, f"«{cliente}» tiene documentos o facturación recurrente, así que no "
+                                "se puede eliminar. Para que no aparezca al facturar, ábrelo y "
+                                "desmarca «Activo».")
+    else:
+        nombre = str(cliente)
+        cliente.delete()
+        messages.success(request, f"Cliente «{nombre}» eliminado.")
+    return redirect("clientes")
 
 
 def nombres_de_clientes(archivo):
@@ -363,7 +382,8 @@ def productos(request):
                  filas, "producto_nuevo", "Nuevo producto",
                  "Aún no hay productos.",
                  eliminar=lambda i: (reverse("producto_eliminar", args=[productos[i].pk]),
-                                     productos[i].nombre))
+                                     productos[i].nombre),
+                 aviso_eliminar="Las facturas que ya lo usan no cambian.")
 
 
 @require_POST

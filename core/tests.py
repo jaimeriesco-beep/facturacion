@@ -757,7 +757,6 @@ class EliminarProductoTests(Base):
         self.assertContains(r, f'action="/productos/{prod.pk}/eliminar/"')
         self.assertContains(r, 'class="icono-accion basurero"')
         self.assertContains(r, f'href="/productos/{prod.pk}/" class="icono-accion editar"')
-        self.assertNotContains(self.client.get(reverse("clientes")), "basurero")   # solo en productos
         self.assertEqual(self.client.get(reverse("producto_eliminar", args=[prod.pk])).status_code, 405)
         otra = Sociedad.objects.create(rut="76086428-5", razon_social="Otra")
         ajeno = Producto.objects.create(sociedad=otra, nombre="Ajeno")
@@ -812,3 +811,20 @@ class AsociadosTests(Base):
         self.assertNotContains(self.client.get(reverse("documento", args=[sola.pk])), "Documentos asociados")
         # La cotización no viaja al SII como referencia.
         self.assertIsNone(de_cot.referencia)
+
+
+class EliminarClienteTests(Base):
+    def test_editar_y_eliminar_clientes(self):
+        libre = Cliente.objects.create(sociedad=self.soc, razon_social="Sin historial", nombre_fantasia="Libre")
+        self.factura(folio=1)                                     # Cliente Uno queda con historial
+        r = self.client.get(reverse("clientes"))
+        self.assertContains(r, f'href="/clientes/{libre.pk}/" class="icono-accion editar"')
+        self.assertContains(r, f'action="/clientes/{libre.pk}/eliminar/"')
+        self.assertContains(r, "No se puede deshacer.")
+        r = self.client.post(reverse("cliente_eliminar", args=[self.cli.pk]), follow=True)
+        self.assertContains(r, "no se puede eliminar")
+        self.assertTrue(Cliente.objects.filter(pk=self.cli.pk).exists())
+        r = self.client.post(reverse("cliente_eliminar", args=[libre.pk]), follow=True)
+        self.assertContains(r, "Cliente «Libre · Sin historial» eliminado")
+        self.assertFalse(Cliente.objects.filter(pk=libre.pk).exists())
+        self.assertEqual(self.client.get(reverse("cliente_eliminar", args=[self.cli.pk])).status_code, 405)

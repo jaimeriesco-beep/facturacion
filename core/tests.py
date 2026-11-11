@@ -426,7 +426,12 @@ class ClientesYUsuariosTests(Base):
         nuevo = get_user_model().objects.get(username="alberto")
         self.assertTrue(nuevo.is_superuser and nuevo.check_password("una-clave-larga-2026"))
         self.assertEqual(self.client.get(reverse("usuarios")).status_code, 200)
-        self.assertEqual(self.client.get(reverse("password_change")).status_code, 200)
+        self.assertContains(self.client.get(reverse("password_change")), "Cambiar mi clave")
+        r = self.client.post(reverse("password_change"), {
+            "old_password": "clave-segura-123", "new_password1": "otra-clave-larga-2027",
+            "new_password2": "otra-clave-larga-2027"})
+        self.assertRedirects(r, reverse("inicio"))
+        self.assertEqual(self.client.get("/admin/").status_code, 404)
         import json
         datos = json.loads(self.client.get(reverse("respaldo")).content)
         self.assertEqual({"core.sociedad", "core.cliente", "auth.user"} - {d["model"] for d in datos}, set())

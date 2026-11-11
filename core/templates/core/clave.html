@@ -1,0 +1,16 @@
+{% extends "core/base.html" %}
+{% block titulo %}Cambiar mi clave{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Cambiar mi clave</h1></div>
+<form method="post" class="panel" style="max-width:520px">{% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for campo in form %}
+  <div class="campo" style="margin-bottom:14px">{{ campo.label_tag }}{{ campo }}{{ campo.errors }}</div>
+  {% endfor %}
+  <p class="ayuda">La clave debe tener al menos 12 caracteres y no ser una clave común.</p>
+  <div class="acciones" style="margin-top:14px">
+    <button class="primario" type="submit">Guardar clave</button>
+    <a class="boton" href="{% url 'inicio' %}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

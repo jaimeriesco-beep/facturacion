@@ -20,10 +20,10 @@
     <a href="{% url 'cobranza' %}" class="{% if u == 'cobranza' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#cobranza"/></svg><span>Cobranza</span></a>
     <a href="{% url 'recurrentes' %}" class="{% if 'recurrente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#recurrentes"/></svg><span>Recurrentes</span></a>
     <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#clientes"/></svg><span>Clientes</span></a>
-    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos (SKU)</span></a>
     <a href="{% url 'papelera' %}" class="{% if u == 'papelera' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg><span>Papelera</span></a>
+    <div class="seccion">Productos{% if sociedad_actual.inventario_activo %} e inventario{% endif %}</div>
+    <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos (SKU)</span></a>
     {% if sociedad_actual.inventario_activo %}
-    <div class="seccion">Inventario</div>
     <a href="{% url 'inventario_stock' %}" class="{% if u == 'inventario_stock' or u == 'inventario_kardex' or u == 'inventario_entrada' or u == 'inventario_salida' or u == 'inventario_toma' or u == 'inventario_traslado' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#inventario"/></svg><span>Stock</span></a>
     <a href="{% url 'inventario_movimientos' %}" class="{% if u == 'inventario_movimientos' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#movimientos"/></svg><span>Movimientos</span></a>
     {% endif %}

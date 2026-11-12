@@ -384,12 +384,19 @@ def cliente_form(request, pk=None):
 @con_sociedad
 def productos(request):
     productos = list(request.sociedad.productos.all())
+    con_stock = request.sociedad.inventario_activo
+    existencias = inventario.stock(request.sociedad) if con_stock else {}
+
+    def stock_de(p):
+        if not p.controla_stock:
+            return "No controla"
+        return f"{inventario.numero(existencias.get(p.pk, 0))} {p.unidad}".strip()
     filas = [(reverse("producto_editar", args=[p.pk]),
               [p.nombre, p.codigo, p.unidad, "$" + numero(p.precio),
-               "Exento" if p.exento else "Afecto", si_no(p.activo)])
+               "Exento" if p.exento else "Afecto"] + ([stock_de(p)] if con_stock else []) + [si_no(p.activo)])
              for p in productos]
     return lista(request, "Productos (SKU)",
-                 ["Nombre", "SKU", "Unidad", "Precio neto", "IVA", "Activo"],
+                 ["Nombre", "SKU", "Unidad", "Precio neto", "IVA"] + (["Stock"] if con_stock else []) + ["Activo"],
                  filas, "producto_nuevo", "Nuevo producto",
                  "Aún no hay productos.",
                  eliminar=lambda i: (reverse("producto_eliminar", args=[productos[i].pk]),

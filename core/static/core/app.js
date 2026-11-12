@@ -130,3 +130,44 @@ document.addEventListener("focusout", (e) => {
   document.addEventListener("click", (e) => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") menu.open = false; });
 })();
+
+
+// Menú lateral: cada grupo abre sus subcategorías en un panel a la derecha (en el celular, hacia abajo).
+(function () {
+  const grupos = [...document.querySelectorAll("[data-grupo]")];
+  if (!grupos.length) return;
+  const escritorio = () => matchMedia("(min-width: 901px)").matches;
+  let espera;
+  function abrir(g) {
+    grupos.forEach((o) => { if (o !== g) cerrar(o); });
+    g.classList.add("abierto");
+    g.querySelector(".grupo-boton").setAttribute("aria-expanded", "true");
+  }
+  function cerrar(g) {
+    g.classList.remove("abierto");
+    g.querySelector(".grupo-boton").setAttribute("aria-expanded", "false");
+  }
+  grupos.forEach((g) => {
+    const boton = g.querySelector(".grupo-boton");
+    boton.addEventListener("click", () => (g.classList.contains("abierto") ? cerrar(g) : abrir(g)));
+    g.addEventListener("mouseenter", () => {
+      if (!escritorio()) return;
+      clearTimeout(espera);
+      // Si ya hay otro panel abierto, se espera un instante: así se puede cruzar en diagonal
+      // por encima de otras categorías camino al panel sin que cambie.
+      const otro = grupos.some((o) => o !== g && o.classList.contains("abierto"));
+      if (otro) espera = setTimeout(() => abrir(g), 260);
+      else abrir(g);
+    });
+    g.addEventListener("mouseleave", () => {
+      if (!escritorio()) return;
+      clearTimeout(espera);
+      espera = setTimeout(() => cerrar(g), 260);
+    });
+    g.querySelector(".submenu").addEventListener("keydown", (e) => { if (e.key === "Escape") { cerrar(g); boton.focus(); } });
+  });
+  document.addEventListener("click", (e) => { if (escritorio() && !e.target.closest("[data-grupo]")) grupos.forEach(cerrar); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") grupos.forEach(cerrar); });
+  // En el celular, el grupo de la página actual parte abierto.
+  if (!escritorio()) grupos.filter((g) => g.classList.contains("actual")).forEach(abrir);
+})();

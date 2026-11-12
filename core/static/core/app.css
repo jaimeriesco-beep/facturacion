@@ -449,3 +449,39 @@ tr.inactivo .persona strong { font-weight: 500; }
 .otros-docs { margin-top: 14px; }
 .otros-docs summary { cursor: pointer; font-weight: 600; }
 .barras-ingreso .barra-cat i { background: var(--verde); }
+
+/* Menú con subcategorías que se despliegan a la derecha */
+.menu { position: sticky; top: 0; height: 100vh; overflow-y: auto; z-index: 40; }
+.menu-items { display: grid; gap: 2px; }
+.grupo-boton { display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 12px; border: 0; border-radius: 10px;
+  background: none; color: #fff; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.grupo-boton:hover, .grupo.abierto > .grupo-boton { background: rgba(255,255,255,.1); text-decoration: none; }
+.grupo-boton.activo { background: #e1eac6; color: #1f3d31; font-weight: 700; }
+.grupo-boton span { flex: 1; }
+.grupo-boton .chevron { width: 16px; height: 16px; flex: none; opacity: .75; transition: transform .15s; }
+.menu-items a.grupo-boton.activo::after { content: none; }
+.submenu { display: none; position: fixed; top: 0; left: 250px; width: 300px; height: 100vh; overflow-y: auto;
+  background: #fff; color: var(--texto); padding: 22px 14px; box-shadow: 8px 0 28px rgba(0,0,0,.14);
+  border-right: 1px solid var(--borde); z-index: 50; }
+.grupo.abierto .submenu { display: block; }
+.submenu-titulo { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--suave);
+  padding: 4px 12px 10px; }
+.submenu a { display: block; padding: 11px 12px; border-radius: 10px; color: var(--texto); }
+.submenu a:hover { background: #f1f4ee; text-decoration: none; }
+.submenu a strong { display: block; font-size: 15px; font-weight: 600; }
+.submenu a span { display: block; font-size: 13px; color: var(--suave); margin-top: 2px; }
+.submenu a.activo { background: #eef3e6; }
+.submenu a.activo strong { color: var(--verde-oscuro); }
+.submenu a.activo::after { content: none; }
+@media (max-width: 900px) {
+  .menu { position: static; height: auto; overflow: visible; }
+  .submenu { position: static; width: auto; height: auto; box-shadow: none; border: 0; padding: 2px 0 8px 33px;
+    background: transparent; }
+  .submenu-titulo { display: none; }
+  .submenu a { color: #fff; padding: 8px 12px; }
+  .submenu a span { color: #b9cfc3; }
+  .submenu a:hover, .submenu a.activo { background: rgba(255,255,255,.1); }
+  .submenu a.activo strong { color: #e1eac6; }
+  .grupo.abierto .chevron { transform: rotate(90deg); }
+}
+.grupo-boton.activo, .grupo-boton.activo:hover, .grupo.abierto > .grupo-boton.activo { background: #e1eac6; color: #1f3d31; }

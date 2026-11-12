@@ -38,7 +38,7 @@ from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm, Env
 from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
                      NOTA_DEBITO, NOTAS, DIAS_AVISO, DIAS_PAPELERA,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
-                     Recurrente, Sociedad, hoy, purgar_papelera)
+                     Recurrente, Sociedad, firma_de, hoy, perfil_de, purgar_papelera)
 from .templatetags.formato import numero
 from .utils import MESES, actividades_sii, decimal_cl, formatear_clp, formatear_rut
 
@@ -851,7 +851,7 @@ def _recordatorio_inicial(doc, usuario):
         estado = f"vence el {doc.fecha_vencimiento:%d/%m/%Y}"
     pagado = (f" Registramos abonos por {formatear_clp(doc.pagado)}, por lo que el saldo es de "
               f"{formatear_clp(doc.saldo)}.") if doc.pagado else ""
-    firma = usuario.get_full_name() or doc.sociedad.razon_social
+    firma = firma_de(usuario, doc.sociedad)
     datos_pago = ""
     if doc.sociedad.email:
         datos_pago = f" Si ya realizaste el pago, te agradecemos enviarnos el comprobante a {doc.sociedad.email}."
@@ -863,7 +863,7 @@ def _recordatorio_inicial(doc, usuario):
         "mensaje": (f"Hola {saludo}:\n\nTe recordamos que la {nombre}, {emision} por "
                     f"{formatear_clp(doc.total)}, {estado}.{pagado}\n\n"
                     f"Te adjuntamos nuevamente el documento.{datos_pago}\n\n"
-                    f"Saludos,\n{firma}\n{doc.sociedad.razon_social}")}
+                    f"Saludos,\n{firma}")}
 
 
 def _correo_inicial(doc, usuario):
@@ -885,12 +885,12 @@ def _correo_inicial(doc, usuario):
     else:
         cuerpo = f"Te enviamos adjunta la {nombre}."
         cierre = "Cualquier consulta, estamos para ayudarte."
-    firma = usuario.get_full_name() or doc.sociedad.razon_social
+    firma = firma_de(usuario, doc.sociedad)
     return {
         "para": contacto["email"],
         "asunto": f"{doc.tipo_corto} N° {doc.folio} · {doc.sociedad.razon_social}",
         "mensaje": (f"Hola {saludo}:\n\n{cuerpo}\n\n{cierre}"
-                    f"\n\nSaludos,\n{firma}\n{doc.sociedad.razon_social}")}
+                    f"\n\nSaludos,\n{firma}")}
 
 
 @con_sociedad
@@ -1288,3 +1288,36 @@ def reportes(request):
     return excel(f"ventas_{desde:%Y%m%d}_{hasta:%Y%m%d}", [
         "Código", "Tipo", "Folio", "Emisión", "Vencimiento", "RUT", "Cliente", "Neto",
         "Exento", "IVA", "Total", "Pagado", "Saldo", "Referencia", "Observaciones"], filas)
+
+
+
+# --- Perfil -------------------------------------------------------------------
+@con_sociedad
+def perfil(request):
+    from django.contrib.auth import update_session_auth_hash
+    from django.contrib.auth.forms import PasswordChangeForm
+    from .forms import PerfilForm
+    usuario, datos = request.user, perfil_de(request.user)
+    accion = request.POST.get("accion")
+    form = PerfilForm(request.POST if accion == "datos" else None, initial={
+        "first_name": usuario.first_name, "last_name": usuario.last_name, "cargo": datos.cargo,
+        "telefono": datos.telefono, "sociedad_inicial": datos.sociedad_inicial})
+    clave = PasswordChangeForm(usuario, request.POST if accion == "clave" else None)
+    if accion == "datos" and form.is_valid():
+        d = form.cleaned_data
+        usuario.first_name, usuario.last_name = d["first_name"].strip(), d["last_name"].strip()
+        usuario.save(update_fields=["first_name", "last_name"])
+        datos.cargo, datos.telefono = d["cargo"].strip(), d["telefono"].strip()
+        datos.sociedad_inicial = d["sociedad_inicial"]
+        datos.save()
+        messages.success(request, "Tus datos quedaron guardados.")
+        return redirect("perfil")
+    if accion == "clave" and clave.is_valid():
+        clave.save()
+        update_session_auth_hash(request, clave.user)   # no cierra la sesión
+        messages.success(request, "Tu clave se cambió.")
+        return redirect("perfil")
+    return render(request, "core/perfil.html", {
+        "form": form, "clave": clave, "datos": datos, "abrir_clave": accion == "clave",
+        "firma": firma_de(usuario, request.sociedad),
+        "dos_pasos": settings.EXIGIR_DOS_PASOS})

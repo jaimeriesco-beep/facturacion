@@ -46,6 +46,7 @@ urlpatterns = [
     path("inventario/configuracion/", vi.config, name="inventario_config"),
     path("inventario/bodegas/nueva/", vi.bodega_guardar, name="inventario_bodega_nueva"),
     path("inventario/bodegas/<int:pk>/", vi.bodega_guardar, name="inventario_bodega"),
+    path("perfil/", v.perfil, name="perfil"),
     path("papelera/", v.papelera, name="papelera"),
     path("papelera/accion/", v.papelera_accion, name="papelera_accion"),
     path("papelera/<int:pk>/deshacer/", v.papelera_deshacer, name="papelera_deshacer"),

@@ -121,3 +121,12 @@ document.addEventListener("focusout", (e) => {
     c.dispatchEvent(new Event("input", { bubbles: true }));
   }
 });
+
+
+// Menú de perfil: se cierra al hacer clic fuera o con Escape.
+(function () {
+  const menu = document.querySelector(".menu-perfil");
+  if (!menu) return;
+  document.addEventListener("click", (e) => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") menu.open = false; });
+})();

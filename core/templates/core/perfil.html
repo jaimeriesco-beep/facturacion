@@ -1,0 +1,57 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block titulo %}Mi perfil{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Mi perfil</h1></div>
+<div class="perfil-grid">
+  <div>
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="datos">
+      <h2>Mis datos</h2>
+      <div class="campos">
+        {% for campo in form %}
+        <div class="campo{% if campo.errors %} con-error{% endif %}">
+          <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}
+          {% if campo.help_text %}<p class="ayuda">{{ campo.help_text }}</p>{% endif %}{{ campo.errors }}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="acciones" style="margin-top:16px"><button class="primario" type="submit">Guardar datos</button></div>
+    </form>
+
+    <form method="post" class="panel" id="clave">{% csrf_token %}<input type="hidden" name="accion" value="clave">
+      <h2>Cambiar contraseña</h2>
+      {{ clave.non_field_errors }}
+      <div class="campos campos-clave">
+        {% for campo in clave %}
+        <div class="campo{% if campo.errors %} con-error{% endif %}"><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</div>
+        {% endfor %}
+      </div>
+      <p class="ayuda">Al menos 12 caracteres, que no sea una clave común ni se parezca a tu nombre o correo. Tu sesión sigue abierta después del cambio.</p>
+      <div class="acciones" style="margin-top:12px"><button class="primario" type="submit">Cambiar contraseña</button></div>
+    </form>
+  </div>
+
+  <aside>
+    <div class="panel">
+      <h2>Cuenta</h2>
+      <dl class="datos-cuenta">
+        <dt>Usuario</dt><dd>{{ request.user.username }}</dd>
+        <dt>Correo</dt><dd>{{ request.user.email|default:"—" }}<p class="ayuda" style="margin:2px 0 0">Para cambiarlo, pídeselo a un administrador. Es el correo para recuperar tu clave y el «responder a» de los correos que envías.</p></dd>
+        <dt>Rol</dt><dd>{% if request.user.is_superuser %}Administrador{% else %}Usuario{% endif %}</dd>
+        <dt>Último ingreso</dt><dd>{{ request.user.last_login|date:"d/m/Y H:i"|default:"—" }}</dd>
+        <dt>Cuenta creada</dt><dd>{{ request.user.date_joined|date:"d/m/Y" }}</dd>
+        <dt>Verificación en dos pasos</dt><dd>{% if dos_pasos %}Activada{% else %}Desactivada para todos los usuarios{% endif %}</dd>
+      </dl>
+    </div>
+    <div class="panel">
+      <h2>Firma de tus correos</h2>
+      <p class="suave" style="margin-top:-4px">Así terminan los correos de documentos y recordatorios que envías desde {{ sociedad_actual }}:</p>
+      <pre class="firma">Saludos,
+{{ firma }}</pre>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if abrir_clave %}<script>document.getElementById("clave").scrollIntoView();</script>{% endif %}
+{% endblock %}

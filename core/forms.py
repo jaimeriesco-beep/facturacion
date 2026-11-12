@@ -501,3 +501,15 @@ class TrasladoForm(forms.Form):
         if datos.get("fecha") and datos["fecha"] > hoy():
             self.add_error("fecha", "La fecha no puede ser futura.")
         return datos
+
+
+
+class PerfilForm(forms.Form):
+    first_name = forms.CharField(label="Nombre", max_length=150, required=False)
+    last_name = forms.CharField(label="Apellido", max_length=150, required=False)
+    cargo = forms.CharField(label="Cargo", max_length=80, required=False,
+                            help_text="Aparece en la firma de los correos que envías.")
+    telefono = forms.CharField(label="Teléfono", max_length=20, required=False)
+    sociedad_inicial = forms.ModelChoiceField(
+        label="Sociedad al ingresar", required=False, queryset=Sociedad.objects.filter(activa=True),
+        empty_label="La última que usé", help_text="La que se abre cuando inicias sesión.")

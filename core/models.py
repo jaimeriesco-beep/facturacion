@@ -807,3 +807,36 @@ class Movimiento(models.Model):
     @property
     def es_automatico(self):
         return self.documento_id is not None
+
+
+
+class Perfil(models.Model):
+    """Datos personales del usuario que no trae el modelo de Django."""
+    usuario = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                   related_name="perfil")
+    cargo = models.CharField(max_length=80, blank=True, help_text="Ej.: Gerente comercial")
+    telefono = models.CharField("Teléfono", max_length=20, blank=True)
+    sociedad_inicial = models.ForeignKey(
+        Sociedad, null=True, blank=True, on_delete=models.SET_NULL,
+        verbose_name="Sociedad al ingresar",
+        help_text="La que se abre cuando inicias sesión.")
+
+    def __str__(self):
+        return str(self.usuario)
+
+
+def perfil_de(usuario):
+    return Perfil.objects.get_or_create(usuario=usuario)[0]
+
+
+def firma_de(usuario, sociedad):
+    """Firma para los correos: nombre, cargo, teléfono y sociedad."""
+    perfil = perfil_de(usuario)
+    lineas = [usuario.get_full_name() or sociedad.razon_social]
+    if perfil.cargo:
+        lineas.append(perfil.cargo)
+    if usuario.get_full_name():
+        lineas.append(sociedad.razon_social)
+    if perfil.telefono:
+        lineas.append(perfil.telefono)
+    return "\n".join(lineas)

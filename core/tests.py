@@ -21,7 +21,8 @@ class Base(TestCase):
         self.soc = Sociedad.objects.create(rut="77552628-9", razon_social="Verde Vertical")
         self.cli = Cliente.objects.create(
             sociedad=self.soc, rut="76192083-9", razon_social="Cliente Uno", dias_pago=30)
-        get_user_model().objects.create_user("jaime", password="clave-segura-123")
+        self.clave = "clave-segura-123"
+        self.user = get_user_model().objects.create_user("jaime", password=self.clave, email="jaime@ejemplo.cl")
         self.client.login(username="jaime", password="clave-segura-123")
 
     def factura(self, lineas=((1, 100000, False),), tipo=FACTURA, folio=None, emision=None):
@@ -732,6 +733,7 @@ class MarketingTests(Base):
 
     def test_correo_de_prueba(self):
         from django.core import mail
+        get_user_model().objects.filter(username="jaime").update(email="")
         r = self.client.post(reverse("marketing"), {"accion": "prueba"}, follow=True)
         self.assertContains(r, "no tiene correo")
         get_user_model().objects.filter(username="jaime").update(email="jaime@ejemplo.cl")
@@ -1325,3 +1327,32 @@ class InventarioTests(Base):
         self.soc.save()
         self.assertRedirects(self.client.get(reverse("inventario_stock")), reverse("inventario_config"))
         self.assertNotContains(self.client.get(reverse("inicio")), "Movimientos</span>")
+
+
+class PerfilTests(Base):
+    def test_editar_datos_y_firma(self):
+        r = self.client.get(reverse("perfil"))
+        self.assertContains(r, self.user.email or "—")
+        self.client.post(reverse("perfil"), {"accion": "datos", "first_name": "Jaime", "last_name": "Riesco",
+                                             "cargo": "Gerente", "telefono": "+56 9 1234 5678",
+                                             "sociedad_inicial": self.soc.pk})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.get_full_name(), "Jaime Riesco")
+        from .models import firma_de
+        self.assertEqual(firma_de(self.user, self.soc), "Jaime Riesco\nGerente\nVerde Vertical\n+56 9 1234 5678")
+        self.assertContains(self.client.get(reverse("inicio")), "Jaime Riesco")
+
+    def test_el_correo_no_se_puede_cambiar(self):
+        antes = self.user.email
+        self.client.post(reverse("perfil"), {"accion": "datos", "first_name": "X", "email": "otro@x.cl"})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, antes)
+
+    def test_cambiar_clave_sin_cerrar_sesion(self):
+        r = self.client.post(reverse("perfil"), {"accion": "clave", "old_password": self.clave,
+                                                 "new_password1": "Huerto-Hidroponico-2026",
+                                                 "new_password2": "Huerto-Hidroponico-2026"})
+        self.assertRedirects(r, reverse("perfil"))
+        self.assertEqual(self.client.get(reverse("inicio")).status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Huerto-Hidroponico-2026"))

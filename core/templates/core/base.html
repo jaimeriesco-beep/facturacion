@@ -52,10 +52,18 @@
           {% endfor %}
         </select>
       </form>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-        <a href="{% url 'password_change' %}" title="Cambiar mi clave">{{ request.user.username }}</a>
-        <button type="submit">Salir</button>
-      </form>
+      {% with nombre=request.user.get_full_name|default:request.user.username %}
+      <details class="menu-perfil">
+        <summary aria-label="Mi perfil"><span class="avatar" aria-hidden="true"><svg class="icono"><use href="{% static 'core/iconos.svg' %}#perfil"/></svg></span><span class="perfil-nombre">{{ nombre }}</span><span class="flecha" aria-hidden="true">▾</span></summary>
+        <div class="perfil-panel">
+          <div class="perfil-cabeza"><strong>{{ nombre }}</strong><span class="suave">{{ request.user.email|default:"Sin correo asociado" }}</span>{% if request.user.is_superuser %}<span class="etiqueta">Administrador</span>{% endif %}</div>
+          <a href="{% url 'perfil' %}">Mi perfil</a>
+          <a href="{% url 'perfil' %}#clave">Cambiar contraseña</a>
+          {% if request.user.is_superuser %}<a href="{% url 'usuarios' %}">Usuarios</a>{% endif %}
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="salir">Cerrar sesión</button></form>
+        </div>
+      </details>
+      {% endwith %}
     </div>
     <main>
       {% if messages %}<ul class="mensajes">{% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>{% endif %}

@@ -352,3 +352,33 @@ tr.seleccionada td { background: #f1f6ef; }
 .opciones-radio label { justify-content: flex-start; }
 .opciones-radio input[type=radio] { width: auto; margin: 0; }
 .campos-config { max-width: 320px; }
+
+/* Menú de perfil */
+.menu-perfil { position: relative; }
+.menu-perfil summary { list-style: none; display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 4px 10px 4px 4px; border: 1px solid var(--borde); border-radius: 999px; background: #fff; }
+.menu-perfil summary::-webkit-details-marker { display: none; }
+.menu-perfil summary:hover { background: #f4f5f1; }
+.menu-perfil[open] summary { border-color: var(--verde); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--verde-claro); color: var(--verde-oscuro);
+  display: grid; place-items: center; }
+.avatar .icono { width: 18px; height: 18px; }
+.perfil-nombre { font-size: 14px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-perfil .flecha { color: var(--suave); font-size: 12px; }
+.perfil-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 260px; background: #fff;
+  border: 1px solid var(--borde); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.14); padding: 6px; }
+.perfil-cabeza { display: flex; flex-direction: column; gap: 3px; padding: 10px 10px 12px; border-bottom: 1px solid var(--borde);
+  margin-bottom: 4px; font-size: 14px; word-break: break-word; }
+.perfil-cabeza .etiqueta { align-self: flex-start; margin-top: 4px; }
+.perfil-panel a, .perfil-panel .salir { display: block; width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px;
+  font-size: 14px; color: var(--texto); border: 0; background: none; }
+.perfil-panel a:hover, .perfil-panel .salir:hover { background: #f1f4ee; }
+.perfil-panel form { display: block; border-top: 1px solid var(--borde); margin-top: 4px; padding-top: 4px; }
+.perfil-panel .salir { color: var(--rojo); cursor: pointer; }
+.perfil-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+@media (max-width: 900px) { .perfil-grid { grid-template-columns: 1fr; } .perfil-nombre { display: none; } }
+.campos-clave { grid-template-columns: 1fr; max-width: 420px; }
+.datos-cuenta { margin: 0; display: grid; gap: 10px; }
+.datos-cuenta dt { font-size: 12px; color: var(--suave); }
+.datos-cuenta dd { margin: 0; }
+.firma { white-space: pre-wrap; font-family: inherit; background: #f6f7f3; padding: 12px; border-radius: 8px; margin: 0; }

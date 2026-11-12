@@ -337,9 +337,17 @@ class ImportarClientesForm(forms.Form):
 
 
 class UsuarioForm(forms.ModelForm):
+    ROLES = [("admin", "Administrador"), ("basica", "Cuenta básica")]
+    rol = forms.ChoiceField(
+        label="Rol", choices=ROLES, widget=forms.RadioSelect, initial="basica",
+        help_text="Administrador: crea y edita usuarios y descarga respaldos. "
+                  "Cuenta básica: usa la app pero no puede ver ni modificar a otros usuarios.")
+    cargo = forms.CharField(label="Cargo", max_length=80, required=False,
+                            help_text="Ej.: Gerente Comercial. Aparece en la firma de sus correos.")
+    telefono = forms.CharField(label="Teléfono", max_length=20, required=False)
     clave = forms.CharField(
         label="Clave", widget=forms.PasswordInput, required=False,
-        help_text="Clave inicial; cada persona puede cambiarla después desde su sesión.")
+        help_text="Clave inicial; cada persona puede cambiarla después desde su perfil.")
 
     restablecer_dos_pasos = forms.BooleanField(
         label="Restablecer verificación en dos pasos", required=False,
@@ -348,11 +356,32 @@ class UsuarioForm(forms.ModelForm):
 
     class Meta:
         model = get_user_model()
-        fields = ["username", "first_name", "last_name", "email", "is_superuser", "is_active"]
-        labels = {"is_superuser": "Administrador", "is_active": "Activo"}
+        fields = ["username", "first_name", "last_name", "email", "is_active"]
+        labels = {"is_active": "Cuenta activa", "first_name": "Nombre", "last_name": "Apellido",
+                  "email": "Correo", "username": "Usuario"}
         help_texts = {"username": "Con este nombre se inicia sesión.",
-                      "email": "También sirve para iniciar sesión.",
-                      "is_superuser": "Puede crear y editar usuarios.", "is_active": ""}
+                      "email": "También sirve para iniciar sesión y recuperar la clave.",
+                      "is_active": "Si la desactivas, no puede iniciar sesión. Sus datos y lo que "
+                                   "hizo en la app se conservan."}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        u = self.instance
+        self.fields["rol"].initial = "admin" if u.pk and u.is_superuser else "basica"
+        if u.pk:
+            self.fields["clave"].label = "Nueva clave (opcional)"
+            self.fields["clave"].help_text = ("Déjala vacía para no cambiarla. Si la cambias, "
+                                              "avísale a la persona.")
+        if u.pk:
+            from .models import Perfil
+            perfil = Perfil.objects.filter(usuario=u).first()
+            if perfil:
+                self.fields["cargo"].initial = perfil.cargo
+                self.fields["telefono"].initial = perfil.telefono
+        # Orden: datos de la persona, luego acceso.
+        orden = ["first_name", "last_name", "cargo", "telefono", "username", "email", "rol",
+                 "is_active", "clave", "restablecer_dos_pasos"]
+        self.order_fields(orden)
 
     def clean_email(self):
         correo = self.cleaned_data["email"].strip()
@@ -369,15 +398,29 @@ class UsuarioForm(forms.ModelForm):
             validate_password(clave, self.instance)
         return clave
 
+    def clean(self):
+        datos = super().clean()
+        u = self.instance
+        deja_de_ser_admin = u.pk and u.is_superuser and u.is_active and (
+            datos.get("rol") != "admin" or not datos.get("is_active"))
+        if deja_de_ser_admin and not get_user_model().objects.filter(
+                is_superuser=True, is_active=True).exclude(pk=u.pk).exists():
+            raise ValidationError("Debe quedar al menos un administrador activo.")
+        return datos
+
     def save(self, commit=True):
         usuario = super().save(commit=False)
-        usuario.is_staff = usuario.is_superuser
+        usuario.is_superuser = usuario.is_staff = self.cleaned_data["rol"] == "admin"
         if self.cleaned_data["clave"]:
             usuario.set_password(self.cleaned_data["clave"])
         if commit:
             usuario.save()
+            from .models import DosPasos, perfil_de
+            perfil = perfil_de(usuario)
+            perfil.cargo = self.cleaned_data["cargo"].strip()
+            perfil.telefono = self.cleaned_data["telefono"].strip()
+            perfil.save(update_fields=["cargo", "telefono"])
             if self.cleaned_data.get("restablecer_dos_pasos"):
-                from .models import DosPasos
                 DosPasos.objects.filter(usuario=usuario).delete()
         return usuario
 

@@ -426,16 +426,26 @@ class ClientesYUsuariosTests(Base):
         r = self.client.post(reverse("usuario_nuevo"), {
             "username": "alberto", "first_name": "Alberto", "last_name": "Riesco",
             "email": "alberto@example.com", "clave": "una-clave-larga-2026",
-            "is_superuser": "on", "is_active": "on"})
+            "rol": "admin", "is_active": "on"})
         self.assertRedirects(r, reverse("usuarios"))
         nuevo = get_user_model().objects.get(username="alberto")
         self.assertTrue(nuevo.is_superuser and nuevo.check_password("una-clave-larga-2026"))
         self.assertEqual(self.client.get(reverse("usuarios")).status_code, 200)
-        self.assertContains(self.client.get(reverse("password_change")), "Cambiar mi clave")
-        r = self.client.post(reverse("password_change"), {
-            "old_password": "clave-segura-123", "new_password1": "otra-clave-larga-2027",
+        self.assertRedirects(self.client.get(reverse("password_change")), "/perfil/#clave",
+                             fetch_redirect_response=False)
+        self.assertContains(self.client.get(reverse("perfil")), "Repite la clave nueva")
+        r = self.client.post(reverse("perfil"), {
+            "accion": "clave", "old_password": "mala-clave-123", "new_password1": "otra-clave-larga-2027",
             "new_password2": "otra-clave-larga-2027"})
-        self.assertRedirects(r, reverse("inicio"))
+        self.assertContains(r, "La clave actual no es correcta.")
+        r = self.client.post(reverse("perfil"), {
+            "accion": "clave", "old_password": "clave-segura-123", "new_password1": "otra-clave-larga-2027",
+            "new_password2": "otra-clave-larga-2028"})
+        self.assertContains(r, "Las dos claves nuevas no coinciden.")
+        r = self.client.post(reverse("perfil"), {
+            "accion": "clave", "old_password": "clave-segura-123", "new_password1": "otra-clave-larga-2027",
+            "new_password2": "otra-clave-larga-2027"})
+        self.assertRedirects(r, reverse("perfil"))
         self.assertEqual(self.client.get("/admin/").status_code, 404)
         import json
         datos = json.loads(self.client.get(reverse("respaldo")).content)
@@ -581,7 +591,7 @@ class IngresoConCorreoTests(Base):
         self.client.login(username="jaime", password="clave-segura-123")
         r = self.client.post(reverse("usuario_nuevo"), {
             "username": "otro", "email": "jaime@ejemplo.cl", "clave": "una-clave-larga-2026",
-            "is_superuser": "on", "is_active": "on"})
+            "rol": "basica", "is_active": "on"})
         self.assertContains(r, "Ya hay otro usuario con ese correo")
         Usuario.objects.create_user("baja", email="baja@ejemplo.cl", password="clave-segura-123", is_active=False)
         self.client.logout()
@@ -1356,3 +1366,42 @@ class PerfilTests(Base):
         self.assertEqual(self.client.get(reverse("inicio")).status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("Huerto-Hidroponico-2026"))
+
+
+
+class RolesTests(Base):
+    def setUp(self):
+        super().setUp()
+        get_user_model().objects.filter(pk=self.user.pk).update(is_superuser=True, is_staff=True)
+
+    def test_admin_asigna_cargo_y_cuenta_basica(self):
+        r = self.client.post(reverse("usuario_nuevo"), {
+            "username": "maria", "first_name": "María", "last_name": "Soto", "email": "maria@ejemplo.cl",
+            "cargo": "Gerente Comercial", "clave": "una-clave-larga-2026", "rol": "basica",
+            "is_active": "on"})
+        self.assertRedirects(r, reverse("usuarios"))
+        maria = get_user_model().objects.get(username="maria")
+        self.assertFalse(maria.is_superuser)
+        self.assertEqual(maria.perfil.cargo, "Gerente Comercial")
+        lista = self.client.get(reverse("usuarios"))
+        self.assertContains(lista, "Gerente Comercial")
+        self.assertContains(lista, '<span class="rol rol-basica">Cuenta básica</span>', html=True)
+        self.assertContains(lista, '<span class="estado-u activo">Activo</span>', html=True)
+        # La cuenta básica no entra a Usuarios ni edita a otros.
+        self.client.login(username="maria", password="una-clave-larga-2026")
+        self.assertEqual(self.client.get(reverse("usuarios")).status_code, 302)
+        self.assertEqual(self.client.get(reverse("usuario_editar", args=[self.user.pk])).status_code, 302)
+        self.assertNotContains(self.client.get(reverse("inicio")), 'href="/usuarios/"')
+
+    def test_desactivar_y_ultimo_administrador(self):
+        otro = get_user_model().objects.create_user("pedro", password="x" * 14)
+        r = self.client.post(reverse("usuario_editar", args=[otro.pk]), {
+            "username": "pedro", "rol": "basica"})   # sin is_active => inactivo
+        otro.refresh_from_db()
+        self.assertFalse(otro.is_active)
+        self.assertContains(self.client.get(reverse("usuarios")), '<span class="estado-u inactivo">Inactivo</span>', html=True)
+        # No puede quitarse a sí mismo el rol de administrador.
+        self.client.post(reverse("usuario_editar", args=[self.user.pk]), {
+            "username": "jaime", "rol": "basica", "is_active": "on"})
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_superuser)

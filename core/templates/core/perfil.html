@@ -19,7 +19,8 @@
     </form>
 
     <form method="post" class="panel" id="clave">{% csrf_token %}<input type="hidden" name="accion" value="clave">
-      <h2>Cambiar contraseña</h2>
+      <h2>Cambiar clave</h2>
+      <p class="suave" style="margin-top:-4px">Ingresa tu clave actual y luego la nueva dos veces.</p>
       {{ clave.non_field_errors }}
       <div class="campos campos-clave">
         {% for campo in clave %}
@@ -27,7 +28,7 @@
         {% endfor %}
       </div>
       <p class="ayuda">Al menos 12 caracteres, que no sea una clave común ni se parezca a tu nombre o correo. Tu sesión sigue abierta después del cambio.</p>
-      <div class="acciones" style="margin-top:12px"><button class="primario" type="submit">Cambiar contraseña</button></div>
+      <div class="acciones" style="margin-top:12px"><button class="primario" type="submit">Cambiar clave</button></div>
     </form>
   </div>
 

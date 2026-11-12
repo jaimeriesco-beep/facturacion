@@ -1,0 +1,33 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block titulo %}Usuarios{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Usuarios</h1><div class="acciones"><a class="boton" href="{% url 'respaldo' %}">Descargar respaldo</a><a class="boton primario" href="{% url 'usuario_nuevo' %}">Nuevo usuario</a></div></div>
+<div class="tarjetas">
+  <div class="tarjeta"><div class="rotulo">Administradores</div><div class="valor">{{ n_admin }}</div><div class="nota">Gestionan usuarios y respaldos</div></div>
+  <div class="tarjeta"><div class="rotulo">Cuentas básicas</div><div class="valor">{{ n_basica }}</div><div class="nota">Usan la app sin gestionar usuarios</div></div>
+  <div class="tarjeta"><div class="rotulo">Inactivos</div><div class="valor">{{ n_inactivos }}</div><div class="nota">No pueden iniciar sesión</div></div>
+</div>
+<div class="panel tabla-panel">
+  <table>
+    <thead><tr><th>Persona</th><th>Cargo</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th class="c-accion"></th></tr></thead>
+    <tbody>
+    {% for u in usuarios %}
+      <tr class="{% if not u.is_active %}inactivo{% endif %}">
+        <td data-rotulo="Persona"><div class="persona">
+          <span class="iniciales{% if u.is_superuser and u.is_active %} admin{% endif %}" aria-hidden="true">{% if u.first_name %}{{ u.first_name|first|upper }}{{ u.last_name|first|upper }}{% else %}{{ u.username|first|upper }}{% endif %}</span>
+          <div><a href="{% url 'usuario_editar' u.pk %}"><strong>{{ u.get_full_name|default:u.username }}</strong></a>{% if u == request.user %}<span class="tu">Tú</span>{% endif %}<div class="sub">{{ u.username }}</div></div>
+        </div></td>
+        <td data-rotulo="Cargo">{{ u.cargo|default:"—" }}</td>
+        <td data-rotulo="Correo">{{ u.email|default:"—" }}</td>
+        <td data-rotulo="Rol">{% if u.is_superuser %}<span class="rol rol-admin">Administrador</span>{% else %}<span class="rol rol-basica">Cuenta básica</span>{% endif %}</td>
+        <td data-rotulo="Estado">{% if u.is_active %}<span class="estado-u activo">Activo</span>{% else %}<span class="estado-u inactivo">Inactivo</span>{% endif %}</td>
+        <td data-rotulo="Último ingreso">{{ u.last_login|date:"d/m/Y H:i"|default:"Nunca" }}</td>
+        <td class="c-accion"><a href="{% url 'usuario_editar' u.pk %}" class="icono-accion editar" title="Editar" aria-label="Editar {{ u }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#editar"/></svg></a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="ayuda">Las cuentas básicas usan la app normalmente (ventas, cobranza, inventario), pero no ven este menú ni pueden modificar a otros usuarios. Cada persona edita sus propios datos y clave desde «Mi perfil».</p>
+{% endblock %}

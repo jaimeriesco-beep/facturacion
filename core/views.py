@@ -333,14 +333,16 @@ def solo_administradores(vista):
 
 @solo_administradores
 def usuarios(request):
-    filas = [(reverse("usuario_editar", args=[u.pk]),
-              [u.username, u.get_full_name(), u.email, si_no(u.is_superuser), si_no(u.is_active),
-               u.last_login.strftime("%d/%m/%Y") if u.last_login else "Nunca"])
-             for u in get_user_model().objects.order_by("username")]
-    return lista(request, "Usuarios",
-                 ["Usuario", "Nombre", "Correo", "Administrador", "Activo", "Último ingreso"],
-                 filas, "usuario_nuevo", "Nuevo usuario", "",
-                 extra=[(reverse("respaldo"), "Descargar respaldo")])
+    from .models import Perfil
+    usuarios = list(get_user_model().objects.order_by("-is_active", "-is_superuser", "first_name", "username"))
+    cargos = dict(Perfil.objects.values_list("usuario_id", "cargo"))
+    for u in usuarios:
+        u.cargo = cargos.get(u.pk, "")
+    return render(request, "core/usuarios.html", {
+        "usuarios": usuarios,
+        "n_admin": sum(1 for u in usuarios if u.is_superuser and u.is_active),
+        "n_basica": sum(1 for u in usuarios if not u.is_superuser and u.is_active),
+        "n_inactivos": sum(1 for u in usuarios if not u.is_active)})
 
 
 @solo_administradores
@@ -355,9 +357,9 @@ def respaldo(request):
 @solo_administradores
 def usuario_form(request, pk=None):
     Usuario = get_user_model()
-    instancia = get_object_or_404(Usuario, pk=pk) if pk else Usuario(is_superuser=True)
+    instancia = get_object_or_404(Usuario, pk=pk) if pk else Usuario(is_active=True)
     if pk and instancia == request.user and request.method == "POST" and not (
-            request.POST.get("is_superuser") and request.POST.get("is_active")):
+            request.POST.get("rol") == "admin" and request.POST.get("is_active")):
         messages.error(request, "No puedes quitarte a ti mismo el acceso de administrador.")
         return redirect("usuarios")
     return formulario_simple(request, UsuarioForm, instancia,
@@ -1303,6 +1305,12 @@ def perfil(request):
         "first_name": usuario.first_name, "last_name": usuario.last_name, "cargo": datos.cargo,
         "telefono": datos.telefono, "sociedad_inicial": datos.sociedad_inicial})
     clave = PasswordChangeForm(usuario, request.POST if accion == "clave" else None)
+    for campo, texto in (("old_password", "Clave actual"), ("new_password1", "Clave nueva"),
+                         ("new_password2", "Repite la clave nueva")):
+        clave.fields[campo].label = texto
+        clave.fields[campo].help_text = ""
+    clave.error_messages["password_incorrect"] = "La clave actual no es correcta."
+    clave.error_messages["password_mismatch"] = "Las dos claves nuevas no coinciden."
     if accion == "datos" and form.is_valid():
         d = form.cleaned_data
         usuario.first_name, usuario.last_name = d["first_name"].strip(), d["last_name"].strip()

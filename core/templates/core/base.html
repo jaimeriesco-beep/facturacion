@@ -58,7 +58,7 @@
         <div class="perfil-panel">
           <div class="perfil-cabeza"><strong>{{ nombre }}</strong><span class="suave">{{ request.user.email|default:"Sin correo asociado" }}</span>{% if request.user.is_superuser %}<span class="etiqueta">Administrador</span>{% endif %}</div>
           <a href="{% url 'perfil' %}">Mi perfil</a>
-          <a href="{% url 'perfil' %}#clave">Cambiar contraseña</a>
+          <a href="{% url 'perfil' %}#clave">Cambiar clave</a>
           {% if request.user.is_superuser %}<a href="{% url 'usuarios' %}">Usuarios</a>{% endif %}
           <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="salir">Cerrar sesión</button></form>
         </div>

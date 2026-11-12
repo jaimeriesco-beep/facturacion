@@ -1,0 +1,53 @@
+{% extends "core/base.html" %}
+{% block titulo %}Banco · categorías y reglas{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'banco' %}">← Banco</a></p>
+<div class="titulo"><h1>Categorías, reglas y cuentas</h1></div>
+<div class="panel">
+  <h2>Reglas automáticas</h2>
+  <p class="suave" style="margin-top:-4px">Al subir una cartola, cada movimiento cuya descripción contenga el texto queda en la categoría indicada. Ej.: «TESORERIA» → Impuestos; «REMUNERACION» → Sueldos.</p>
+  {% for r in reglas %}
+  <form method="post" class="fila-form">{% csrf_token %}<input type="hidden" name="accion" value="regla_borrar"><input type="hidden" name="pk" value="{{ r.pk }}">
+    <span style="flex:1">Si contiene <strong>«{{ r.texto }}»</strong>{% if r.solo %} ({{ r.get_solo_display|lower }}){% endif %} → {{ r.categoria }}</span>
+    <button type="submit" class="chico">Quitar</button>
+  </form>
+  {% empty %}<p class="suave">Aún no hay reglas. También puedes crearlas desde cada movimiento.</p>{% endfor %}
+  <form method="post" class="fila-form nueva">{% csrf_token %}<input type="hidden" name="accion" value="regla">
+    <input name="texto" maxlength="80" required placeholder="Texto, ej.: TESORERIA" aria-label="Texto de la regla" style="flex:1;max-width:260px">
+    <select name="categoria" required aria-label="Categoría">{% for c in categorias %}{% if c.activa %}<option value="{{ c.pk }}">{{ c }}</option>{% endif %}{% endfor %}</select>
+    <select name="solo" aria-label="Aplica a"><option value="">Cargos y abonos</option><option value="cargo">Solo cargos</option><option value="abono">Solo abonos</option></select>
+    <button type="submit" class="chico">Agregar regla</button>
+  </form>
+</div>
+<div class="panel">
+  <h2>Categorías</h2>
+  {% for c in categorias %}
+  <form method="post" class="fila-form">{% csrf_token %}<input type="hidden" name="accion" value="categoria"><input type="hidden" name="pk" value="{{ c.pk }}">
+    <input name="nombre" value="{{ c.nombre }}" maxlength="60" required aria-label="Nombre" style="flex:1;max-width:320px">
+    <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}" {% if v == c.tipo %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+    <label class="casilla" style="margin:0"><input type="checkbox" name="activa" {% if c.activa %}checked{% endif %}> Activa</label>
+    <span class="suave" style="min-width:110px">{{ c.n }} movimiento{{ c.n|pluralize }}</span>
+    <button type="submit" class="chico">Guardar</button>
+  </form>
+  {% endfor %}
+  <form method="post" class="fila-form nueva">{% csrf_token %}<input type="hidden" name="accion" value="categoria">
+    <input name="nombre" maxlength="60" required placeholder="Nueva categoría" aria-label="Nueva categoría" style="flex:1;max-width:320px">
+    <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}">{{ n }}</option>{% endfor %}</select>
+    <button type="submit" class="chico">Agregar</button>
+  </form>
+</div>
+{% if cuentas %}
+<div class="panel">
+  <h2>Cuentas</h2>
+  {% for c in cuentas %}
+  <form method="post" class="fila-form">{% csrf_token %}<input type="hidden" name="accion" value="cuenta"><input type="hidden" name="pk" value="{{ c.pk }}">
+    <span style="min-width:220px">{{ c.banco }} · {{ c.numero }}</span>
+    <input name="alias" value="{{ c.alias }}" maxlength="60" placeholder="Nombre corto, ej.: Cuenta corriente" aria-label="Alias" style="flex:1;max-width:280px">
+    <label class="casilla" style="margin:0"><input type="checkbox" name="activa" {% if c.activa %}checked{% endif %}> Activa</label>
+    <span class="suave">{{ c.n }} movimientos</span>
+    <button type="submit" class="chico">Guardar</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Movimiento del {{ m.fecha|date:"d/m/Y" }}{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'banco' %}?cuenta={{ m.cuenta_id }}&amp;mes={{ m.fecha|date:'Y-m' }}">← Movimientos de {{ m.cuenta }}</a></p>
+<div class="panel mov-cabeza">
+  <div>
+    <div class="suave">{{ m.fecha|date:"l d/m/Y"|capfirst }} · {{ m.cuenta }}{% if m.documento %} · doc. {{ m.documento }}{% endif %}{% if m.sucursal %} · {{ m.sucursal }}{% endif %}</div>
+    <h1 style="margin:4px 0 0">{{ m.descripcion }}</h1>
+  </div>
+  <div class="mov-monto {% if m.es_abono %}monto-abono{% endif %}">{% if m.es_abono %}+{% else %}−{% endif %}{{ m.monto|clp|cut:"-" }}<div class="suave" style="font-size:13px;font-weight:400">{% if m.es_abono %}Abono{% else %}Cargo{% endif %}{% if m.conciliado_monto %} · conciliado {{ m.conciliado_monto|clp }}{% endif %}</div></div>
+</div>
+
+{% if conciliaciones %}
+<div class="panel">
+  <h2>Conciliado con</h2>
+  <table><thead><tr><th>Documento</th><th>{% if m.es_abono %}Cliente{% else %}Proveedor{% endif %}</th><th class="num">Monto</th></tr></thead><tbody>
+  {% for c in conciliaciones %}<tr>
+    {% if c.pago %}<td><a href="{% url 'documento' c.pago.documento_id %}">{{ c.pago.documento }}</a></td><td>{{ c.pago.documento.cliente }}</td>
+    {% else %}<td><a href="{% url 'compra' c.pago_compra.compra_id %}">{{ c.pago_compra.compra }}</a></td><td>{{ c.pago_compra.compra.proveedor }}</td>{% endif %}
+    <td class="num">{{ c.monto|clp }}</td></tr>{% endfor %}
+  </tbody></table>
+  <form method="post" style="margin-top:12px" onsubmit="return confirm('¿Deshacer la conciliación? Se eliminan los pagos que se registraron al conciliar.')">{% csrf_token %}<input type="hidden" name="accion" value="deshacer"><button type="submit">Deshacer conciliación</button></form>
+</div>
+{% endif %}
+
+<div class="perfil-grid">
+  <div>
+  {% if m.por_conciliar %}
+  <form method="post" class="panel" id="form-conciliar">{% csrf_token %}<input type="hidden" name="accion" value="conciliar">
+    {% if siguiente %}<input type="hidden" name="siguiente" value="{% url 'banco_movimiento' siguiente.pk %}">{% endif %}
+    <h2>{% if m.es_abono %}¿Qué factura se está cobrando?{% else %}¿Qué compra se está pagando?{% endif %}</h2>
+    <p class="suave" style="margin-top:-4px">Marca uno o varios documentos. Al conciliar se registra {% if m.es_abono %}el cobro en la factura{% else %}el pago en la compra{% endif %} con la fecha del banco. Por conciliar: <strong>{{ m.por_conciliar|clp }}</strong>.</p>
+    {% if sugeridas %}
+    <h3 class="subtitulo">Sugeridos</h3>
+    <ul class="lista-conciliar">
+    {% for s in sugeridas %}{% with d=s.doc %}
+      <li><label>
+        <input type="checkbox" name="doc" value="{% if m.es_abono %}v{% else %}c{% endif %}-{{ d.pk }}" {% if forloop.first and s.exacto %}checked{% endif %}>
+        <span class="doc-info"><strong>{{ d }}</strong> · {% if m.es_abono %}{{ d.cliente }}{% else %}{{ d.proveedor }}{% endif %}<span class="suave"> · {{ d.fecha_emision|date:"d/m/Y" }}</span>
+          <span class="motivos">{% if s.exacto %}<span class="etiqueta e-ok">Mismo monto</span>{% endif %}{% if s.nombre %}<span class="etiqueta e-ok">Nombre coincide</span>{% endif %}</span></span>
+        <input class="monto-conciliar" name="monto-{% if m.es_abono %}v{% else %}c{% endif %}-{{ d.pk }}" value="{{ s.saldo }}" inputmode="numeric" aria-label="Monto a conciliar">
+      </label></li>
+    {% endwith %}{% endfor %}
+    </ul>
+    {% endif %}
+    <details class="otros-docs"{% if not sugeridas %} open{% endif %}><summary>{% if sugeridas %}Otros documentos{% else %}Elegir documento{% endif %} ({{ otros|length }})</summary>
+      <input type="search" placeholder="Buscar por cliente, proveedor o folio" class="buscar-doc" aria-label="Buscar documento" style="margin:8px 0">
+      <ul class="lista-conciliar">
+      {% for d in otros %}
+        <li data-buscar="{{ d|lower }} {% if m.es_abono %}{{ d.cliente|lower }}{% else %}{{ d.proveedor|lower }}{% endif %}"><label>
+          <input type="checkbox" name="doc" value="{% if m.es_abono %}v{% else %}c{% endif %}-{{ d.pk }}">
+          <span class="doc-info"><strong>{{ d }}</strong> · {% if m.es_abono %}{{ d.cliente }}{% else %}{{ d.proveedor }}{% endif %}<span class="suave"> · {{ d.fecha_emision|date:"d/m/Y" }} · saldo {{ d.saldo|clp }}</span></span>
+          <input class="monto-conciliar" name="monto-{% if m.es_abono %}v{% else %}c{% endif %}-{{ d.pk }}" value="{{ d.saldo }}" inputmode="numeric" aria-label="Monto a conciliar">
+        </label></li>
+      {% empty %}<li class="suave">No hay {% if m.es_abono %}facturas por cobrar{% else %}compras por pagar{% endif %}.</li>
+      {% endfor %}
+      </ul>
+    </details>
+    <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Conciliar</button><span class="suave" id="suma-conciliar"></span></div>
+  </form>
+  {% endif %}
+  </div>
+  <aside>
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="categoria">
+      <h2>Categoría</h2>
+      <p class="suave" style="margin-top:-4px">Para lo que no es una factura: sueldos, impuestos, contribuciones, comisiones…</p>
+      <div class="campo"><label for="m-cat">Categoría</label><select id="m-cat" name="categoria"><option value="">Sin categoría</option>{% for c in categorias %}<option value="{{ c.pk }}" {% if c.pk == m.categoria_id %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="campo" style="margin-top:10px"><label for="m-nota">Nota</label><input id="m-nota" name="nota" value="{{ m.nota }}" maxlength="200"></div>
+      <div class="campo" style="margin-top:10px"><label for="m-regla">Crear regla <span class="suave">(opcional)</span></label><input id="m-regla" name="regla" maxlength="80" placeholder="{{ regla_sugerida }}"><p class="ayuda">Los movimientos cuya descripción contenga este texto irán siempre a esta categoría. Ej.: «{{ regla_sugerida }}».</p></div>
+      <div class="acciones" style="margin-top:12px"><button class="primario" type="submit">Guardar</button></div>
+    </form>
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="ignorar">
+      <p class="suave" style="margin:0 0 8px">{% if m.ignorado %}Este movimiento está marcado como «no requiere revisión».{% else %}¿No hay nada que conciliar ni categorizar?{% endif %}</p>
+      <button type="submit">{% if m.ignorado %}Volver a revisar{% else %}No requiere revisión{% endif %}</button>
+    </form>
+    {% if siguiente %}<p><a href="{% url 'banco_movimiento' siguiente.pk %}">Siguiente por revisar →</a></p>{% endif %}
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById("form-conciliar");
+  if (!form) return;
+  const leer = (t) => Number(String(t).replace(/[.$\s]/g, "")) || 0;
+  function sumar() {
+    let total = 0;
+    form.querySelectorAll("input[name=doc]:checked").forEach((c) => { total += leer(c.closest("label").querySelector(".monto-conciliar").value); });
+    document.getElementById("suma-conciliar").textContent = total ? "Suma marcada: $" + total.toLocaleString("es-CL") + " de $" + ({{ m.por_conciliar }}).toLocaleString("es-CL") : "";
+  }
+  form.addEventListener("input", sumar); form.addEventListener("change", sumar);
+  const buscar = form.querySelector(".buscar-doc");
+  if (buscar) buscar.addEventListener("input", () => {
+    const q = buscar.value.trim().toLowerCase();
+    form.querySelectorAll(".otros-docs li[data-buscar]").forEach((li) => { li.hidden = q && !li.dataset.buscar.includes(q); });
+  });
+  buscar && buscar.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+  sumar();
+})();
+</script>
+{% endblock %}

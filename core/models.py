@@ -1003,3 +1003,145 @@ class PagoCompra(models.Model):
 
     class Meta:
         ordering = ["fecha", "id"]
+
+
+# ---------------------------------------------------------------- Banco
+
+CATEGORIAS_BANCO = [
+    ("Cobro a clientes", "ingreso"), ("Pago a proveedores", "egreso"),
+    ("Sueldos y honorarios", "egreso"), ("Previsión (AFP, salud, seguro de cesantía)", "egreso"),
+    ("Impuestos (F29, PPM, renta)", "egreso"), ("Contribuciones", "egreso"), ("Arriendo", "egreso"),
+    ("Comisiones y gastos bancarios", "egreso"), ("Créditos y préstamos", "ambos"),
+    ("Traspasos entre cuentas propias", "ambos"), ("Retiros de socios", "egreso"),
+    ("Aportes de socios", "ingreso"), ("Seguros", "egreso"), ("Otros ingresos", "ingreso"),
+    ("Otros egresos", "egreso"),
+]
+COBRO_CLIENTES, PAGO_PROVEEDORES = "Cobro a clientes", "Pago a proveedores"
+
+
+class CuentaBancaria(models.Model):
+    BANCOS = ["Banco de Chile", "Banco Santander", "BancoEstado", "BCI", "Itaú", "Scotiabank",
+              "Banco Security", "Banco BICE", "Otro"]
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="cuentas")
+    banco = models.CharField(max_length=40, choices=[(b, b) for b in BANCOS], default="Banco de Chile")
+    numero = models.CharField("Número de cuenta", max_length=30)
+    alias = models.CharField(max_length=60, blank=True, help_text="Ej.: Cuenta corriente principal")
+    activa = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["banco", "numero"]
+        constraints = [models.UniqueConstraint(fields=["sociedad", "banco", "numero"], name="cuenta_unica")]
+
+    def __str__(self):
+        return self.alias or f"{self.banco} · {self.numero}"
+
+    @property
+    def ultimo(self):
+        return self.movimientos.exclude(saldo=None).order_by("-fecha", "-orden").first()
+
+
+class CategoriaBanco(models.Model):
+    TIPOS = [("ingreso", "Ingreso"), ("egreso", "Egreso"), ("ambos", "Ingreso o egreso")]
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="categorias_banco")
+    nombre = models.CharField(max_length=60)
+    tipo = models.CharField(max_length=7, choices=TIPOS, default="ambos")
+    activa = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        constraints = [models.UniqueConstraint(fields=["sociedad", "nombre"], name="categoria_banco_unica")]
+
+    def __str__(self):
+        return self.nombre
+
+
+def categorias_banco_de(sociedad):
+    if not sociedad.categorias_banco.exists():
+        CategoriaBanco.objects.bulk_create(
+            [CategoriaBanco(sociedad=sociedad, nombre=n, tipo=t) for n, t in CATEGORIAS_BANCO])
+    return sociedad.categorias_banco.filter(activa=True)
+
+
+class ReglaBanco(models.Model):
+    """Si la descripción del movimiento contiene `texto`, se le asigna la categoría."""
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="reglas_banco")
+    texto = models.CharField("Si la descripción contiene", max_length=80)
+    categoria = models.ForeignKey(CategoriaBanco, on_delete=models.CASCADE, related_name="reglas")
+    solo = models.CharField(max_length=6, blank=True, choices=[("", "Cargos y abonos"), ("cargo", "Solo cargos"),
+                                                               ("abono", "Solo abonos")])
+
+    class Meta:
+        ordering = ["texto"]
+
+    def __str__(self):
+        return f"«{self.texto}» → {self.categoria}"
+
+    def aplica(self, movimiento):
+        if self.solo == "cargo" and movimiento.monto > 0 or self.solo == "abono" and movimiento.monto < 0:
+            return False
+        return self.texto.lower() in movimiento.descripcion.lower()
+
+
+class MovimientoBancario(models.Model):
+    cuenta = models.ForeignKey(CuentaBancaria, on_delete=models.CASCADE, related_name="movimientos")
+    fecha = models.DateField()
+    orden = models.PositiveIntegerField(default=0, help_text="Posición dentro del día en la cartola.")
+    descripcion = models.CharField("Descripción", max_length=200)
+    monto = models.BigIntegerField(help_text="Positivo: abono. Negativo: cargo.")
+    saldo = models.BigIntegerField(null=True, blank=True)
+    documento = models.CharField("N° documento", max_length=30, blank=True)
+    sucursal = models.CharField(max_length=40, blank=True)
+    huella = models.CharField(max_length=64, editable=False)
+    categoria = models.ForeignKey(CategoriaBanco, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name="movimientos")
+    ignorado = models.BooleanField(default=False)
+    nota = models.CharField(max_length=200, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "-orden", "-id"]
+        constraints = [models.UniqueConstraint(fields=["cuenta", "huella"], name="movimiento_unico")]
+
+    def __str__(self):
+        return f"{self.fecha:%d/%m/%Y} · {self.descripcion} · {self.monto}"
+
+    @property
+    def es_abono(self):
+        return self.monto > 0
+
+    @property
+    def conciliado_monto(self):
+        valor = getattr(self, "conciliado_a", None)
+        if valor is None:
+            valor = self.conciliaciones.aggregate(s=Sum("monto"))["s"] or 0
+        return valor
+
+    @property
+    def por_conciliar(self):
+        return max(abs(self.monto) - self.conciliado_monto, 0)
+
+    @property
+    def estado(self):
+        if self.conciliado_monto and self.por_conciliar == 0:
+            return "conciliado"
+        if self.conciliado_monto:
+            return "parcial"
+        if self.ignorado:
+            return "ignorado"
+        if self.categoria_id:
+            return "categorizado"
+        return "pendiente"
+
+
+class Conciliacion(models.Model):
+    """Une un movimiento del banco con el pago (cobro) de una venta o el pago de una compra."""
+    movimiento = models.ForeignKey(MovimientoBancario, on_delete=models.CASCADE, related_name="conciliaciones")
+    pago = models.OneToOneField(Pago, null=True, blank=True, on_delete=models.CASCADE, related_name="conciliacion")
+    pago_compra = models.OneToOneField(PagoCompra, null=True, blank=True, on_delete=models.CASCADE,
+                                       related_name="conciliacion")
+    monto = models.BigIntegerField()
+    creado_pago = models.BooleanField(default=True, help_text="El pago se creó al conciliar (se borra al deshacer).")
+
+    @property
+    def documento(self):
+        return self.pago.documento if self.pago_id else self.pago_compra.compra

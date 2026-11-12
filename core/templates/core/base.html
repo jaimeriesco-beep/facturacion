@@ -30,6 +30,9 @@
     <div class="seccion">Compras</div>
     <a href="{% url 'compras' %}" class="{% if u == 'compras' or u == 'compra' or u == 'compras_importar' or u == 'compra_nueva' or u == 'compras_categorias' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#compras"/></svg><span>Compras y gastos</span></a>
     <a href="{% url 'proveedores' %}" class="{% if 'proveedor' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#clientes"/></svg><span>Proveedores</span></a>
+    <div class="seccion">Banco</div>
+    <a href="{% url 'banco' %}" class="{% if u == 'banco' or u == 'banco_movimiento' or u == 'banco_importar' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#banco"/></svg><span>Movimientos y conciliación</span></a>
+    <a href="{% url 'banco_configuracion' %}" class="{% if u == 'banco_configuracion' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#ajustes"/></svg><span>Categorías y reglas</span></a>
     <div class="seccion">Marketing</div>
     <a href="{% url 'marketing' %}" class="{% if u == 'marketing' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#marketing"/></svg><span>Marketing</span></a>
     <div class="seccion">Informes</div>

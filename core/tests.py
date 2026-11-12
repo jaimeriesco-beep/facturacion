@@ -1480,3 +1480,93 @@ class ComprasTests(Base):
         self.assertEqual(Compra.objects.con_saldo().get(pk=c.pk).saldo, 39500)
         self.client.post(reverse("compra_eliminar", args=[c.pk]))
         self.assertFalse(Compra.objects.filter(pk=c.pk).exists())
+
+
+CARTOLA = (
+    "VERDE VERTICAL SPA                           (077552628-9) cta:001234567890\r\n"
+    "Fecha;Detalle Movimiento;Cheque o Cargo;Deposito o Abono;Saldo;Docto. Nro.;Trn;Caja;Sucursal\r\n"
+    "01/11/2026;TRASPASO DE:CLIENTE UNO SPA          ;00000000000;+0000119000;+0000619000;00000000000;0;0;INTERNET       \r\n"
+    "03/11/2026;TRASPASO A:Semillas del Sur          ;+0000059500;00000000000;+0000559500;00000000000;0;0;INTERNET       \r\n"
+    "05/11/2026;PAGO TESORERIA GRAL REPUBLICA 123    ;+0000080000;00000000000;+0000479500;00000000000;0;0;INTERNET       \r\n"
+    "05/11/2026;COMISION MANTENCION CTA CTE          ;+0000005000;00000000000;+0000474500;00000000000;0;0;INTERNET       \r\n"
+).encode("utf-8")
+
+
+class BancoTests(Base):
+    def subir(self, contenido=CARTOLA, **extra):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("banco_importar"), {
+            "archivos": [SimpleUploadedFile("CartolaEmitida.xls", contenido)], **extra})
+
+    def test_importa_cartola_banco_de_chile_sin_duplicar(self):
+        from .models import CuentaBancaria, MovimientoBancario
+        r = self.subir()
+        self.assertContains(r, "4 movimientos nuevos")
+        self.assertContains(r, "Los saldos de la cartola cuadran")
+        cuenta = CuentaBancaria.objects.get()
+        self.assertEqual((cuenta.banco, cuenta.numero), ("Banco de Chile", "1234567890"))
+        montos = list(MovimientoBancario.objects.order_by("fecha", "orden").values_list("monto", flat=True))
+        self.assertEqual(montos, [119000, -59500, -80000, -5000])
+        self.assertContains(self.subir(), "4 ya estaban")
+        self.assertEqual(MovimientoBancario.objects.count(), 4)
+        r = self.client.get(reverse("banco"))
+        self.assertEqual((r.context["abonos"], r.context["cargos"], r.context["por_revisar"]), (119000, 144500, 4))
+
+    def test_rechaza_cartola_de_otro_rut(self):
+        otra = CARTOLA.replace(b"(077552628-9)", b"(096724880-0)")
+        self.assertContains(self.subir(otra), "no de Verde Vertical")
+        self.assertContains(self.subir(otra, otro_rut="on"), "4 movimientos nuevos")
+
+    def test_concilia_cobro_con_sugerencia_y_deshace(self):
+        from .banco import sugerencias
+        from .models import MovimientoBancario
+        doc = self.factura(folio=10)              # 119.000 a Cliente Uno
+        self.subir()
+        abono = MovimientoBancario.objects.get(monto=119000)
+        s = sugerencias(abono)
+        self.assertEqual(s[0]["doc"], doc)
+        self.assertTrue(s[0]["exacto"] and s[0]["nombre"])
+        self.client.post(reverse("banco_movimiento", args=[abono.pk]),
+                         {"accion": "conciliar", "doc": [f"v-{doc.pk}"], f"monto-v-{doc.pk}": "119.000"})
+        abono.refresh_from_db()
+        self.assertEqual(abono.estado, "conciliado")
+        self.assertEqual(abono.categoria.nombre, "Cobro a clientes")
+        pago = doc.pagos.get()
+        self.assertEqual((pago.monto, pago.fecha), (119000, date(2026, 11, 1)))
+        self.assertEqual(Documento.objects.con_saldo().get(pk=doc.pk).saldo, 0)
+        self.client.post(reverse("banco_movimiento", args=[abono.pk]), {"accion": "deshacer"})
+        self.assertFalse(doc.pagos.exists())
+        abono.refresh_from_db()
+        self.assertEqual(abono.estado, "pendiente")
+
+    def test_concilia_pago_de_compra(self):
+        from .models import Compra, MovimientoBancario, Proveedor
+        prov = Proveedor.objects.create(sociedad=self.soc, rut="76192083-9", razon_social="Semillas del Sur SpA")
+        compra = Compra.objects.create(sociedad=self.soc, proveedor=prov, tipo=33, folio=5,
+                                       fecha_emision=date(2026, 10, 30), periodo="2026-10",
+                                       neto=50000, iva=9500, total=59500)
+        self.subir()
+        cargo = MovimientoBancario.objects.get(monto=-59500)
+        self.client.post(reverse("banco_movimiento", args=[cargo.pk]),
+                         {"accion": "conciliar", "doc": [f"c-{compra.pk}"], f"monto-c-{compra.pk}": "59500"})
+        self.assertEqual(Compra.objects.con_saldo().get(pk=compra.pk).saldo, 0)
+
+    def test_regla_categoriza_y_se_aplica_al_importar(self):
+        from .models import CategoriaBanco, MovimientoBancario, categorias_banco_de
+        categorias_banco_de(self.soc)
+        impuestos = CategoriaBanco.objects.get(sociedad=self.soc, nombre__startswith="Impuestos")
+        self.client.post(reverse("banco_configuracion"), {"accion": "regla", "texto": "TESORERIA",
+                                                          "categoria": impuestos.pk, "solo": "cargo"})
+        self.subir()
+        m = MovimientoBancario.objects.get(descripcion__contains="TESORERIA")
+        self.assertEqual(m.categoria, impuestos)
+        comision = MovimientoBancario.objects.get(descripcion__contains="COMISION")
+        gastos = CategoriaBanco.objects.get(sociedad=self.soc, nombre__startswith="Comisiones")
+        self.client.post(reverse("banco_movimiento", args=[comision.pk]),
+                         {"accion": "categoria", "categoria": gastos.pk, "nota": "", "regla": "COMISION"})
+        comision.refresh_from_db()
+        self.assertEqual(comision.categoria, gastos)
+        self.assertTrue(self.soc.reglas_banco.filter(texto="COMISION").exists())
+
+    def test_rechaza_pdf(self):
+        self.assertContains(self.subir(b"%PDF-1.4 ..."), "Los PDF no se pueden leer")

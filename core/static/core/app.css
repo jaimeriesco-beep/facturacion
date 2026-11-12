@@ -429,3 +429,23 @@ tr.inactivo .persona strong { font-weight: 500; }
 .barra-seleccion form { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .barra-seleccion select { width: auto; }
 .fila-form input, .fila-form select { width: auto; }
+
+/* Banco */
+.monto-abono { color: var(--verde-oscuro); }
+.tabla-banco td { vertical-align: middle; }
+.mov-cabeza { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.mov-cabeza h1 { font-size: 22px; }
+.mov-monto { font-size: 28px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.subtitulo { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--suave); margin: 14px 0 6px; }
+.lista-conciliar { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.lista-conciliar label { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--borde);
+  border-radius: 10px; cursor: pointer; background: #fff; }
+.lista-conciliar label:has(input[type=checkbox]:checked) { border-color: var(--verde); background: #f1f6ef; }
+.lista-conciliar input[type=checkbox] { width: 18px; height: 18px; flex: none; }
+.doc-info { flex: 1; font-size: 14px; }
+.motivos { display: inline-flex; gap: 4px; margin-left: 6px; }
+.e-ok { background: var(--verde-claro); color: var(--verde-oscuro); }
+.monto-conciliar { width: 120px !important; text-align: right; flex: none; }
+.otros-docs { margin-top: 14px; }
+.otros-docs summary { cursor: pointer; font-weight: 600; }
+.barras-ingreso .barra-cat i { background: var(--verde); }

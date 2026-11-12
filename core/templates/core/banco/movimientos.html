@@ -1,0 +1,108 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Banco · {{ cuenta }}{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Banco</h1>
+  <div class="acciones">
+    <a class="boton" href="{% url 'banco_configuracion' %}">Categorías y reglas</a>
+    <a class="boton primario" href="{% url 'banco_importar' %}">Subir cartola</a>
+  </div>
+</div>
+{% if cuentas|length > 1 %}
+<div class="selector-vista" role="tablist" aria-label="Cuenta">{% for c in cuentas %}<a href="?cuenta={{ c.pk }}" role="tab" class="{% if c == cuenta %}activo{% endif %}">{{ c }}</a>{% endfor %}</div>
+{% endif %}
+<div class="tarjetas">
+  <div class="tarjeta destacada"><div class="rotulo">Saldo según cartola</div><div class="valor">{{ ultimo.saldo|clp|default:"—" }}</div><div class="nota">{{ cuenta.banco }} · cta. {{ cuenta.numero }}{% if ultimo %} · al {{ ultimo.fecha|date:"d/m/Y" }}{% endif %}</div></div>
+  <div class="tarjeta"><div class="rotulo">Abonos</div><div class="valor monto-abono">{{ abonos|clp }}</div></div>
+  <div class="tarjeta"><div class="rotulo">Cargos</div><div class="valor">{{ cargos|clp }}</div></div>
+  <div class="tarjeta{% if por_revisar %} alerta{% endif %}"><div class="rotulo">Por revisar</div><div class="valor">{{ por_revisar }}</div><div class="nota">{{ conciliados }} de {{ total }} conciliados</div></div>
+</div>
+<form class="filtros" method="get">
+  <input type="hidden" name="cuenta" value="{{ cuenta.pk }}">
+  <select name="mes" onchange="this.form.submit()" aria-label="Mes">{% for v, n in meses %}<option value="{{ v }}" {% if mes == v %}selected{% endif %}>{{ n }}</option>{% endfor %}<option value="todos" {% if mes == 'todos' %}selected{% endif %}>Todos los meses</option></select>
+  <input type="search" name="q" value="{{ g.q }}" placeholder="Buscar en la descripción" aria-label="Buscar">
+  <select name="estado" onchange="this.form.submit()" aria-label="Estado">
+    <option value="">Todos</option>
+    <option value="por_revisar" {% if g.estado == 'por_revisar' %}selected{% endif %}>Por revisar</option>
+    <option value="conciliado" {% if g.estado == 'conciliado' %}selected{% endif %}>Conciliados</option>
+    <option value="categorizado" {% if g.estado == 'categorizado' %}selected{% endif %}>Con categoría</option>
+    <option value="ignorado" {% if g.estado == 'ignorado' %}selected{% endif %}>Sin revisión</option>
+  </select>
+  <select name="tipo" onchange="this.form.submit()" aria-label="Tipo"><option value="">Cargos y abonos</option><option value="abono" {% if g.tipo == 'abono' %}selected{% endif %}>Solo abonos</option><option value="cargo" {% if g.tipo == 'cargo' %}selected{% endif %}>Solo cargos</option></select>
+  <button type="submit">Filtrar</button>
+  <a class="enlace-papelera" href="?{{ request.GET.urlencode }}{% if request.GET.urlencode %}&amp;{% endif %}formato=excel">Descargar Excel</a>
+</form>
+<div class="dos dos-compras">
+<div class="panel tabla-panel">
+  {% if movimientos %}
+  <table class="tabla-banco">
+    <thead><tr><th class="c-sel"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todos"></th><th>Fecha</th><th>Descripción</th><th class="num">Cargo</th><th class="num">Abono</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for m in movimientos %}
+      <tr class="{% if m.estado == 'ignorado' %}inactivo{% endif %}">
+        <td class="c-sel"><input type="checkbox" class="sel-mov" value="{{ m.pk }}" aria-label="Seleccionar movimiento"></td>
+        <td data-rotulo="Fecha">{{ m.fecha|date:"d/m" }}</td>
+        <td data-rotulo="Descripción"><a href="{% url 'banco_movimiento' m.pk %}" class="enlace-suave">{{ m.descripcion }}</a>{% if m.nota %}<div class="ayuda" style="margin:0">{{ m.nota }}</div>{% endif %}</td>
+        <td class="num" data-rotulo="Cargo">{% if m.monto < 0 %}{{ m.monto|clp|slice:"1:" }}{% endif %}</td>
+        <td class="num monto-abono" data-rotulo="Abono">{% if m.monto > 0 %}{{ m.monto|clp }}{% endif %}</td>
+        <td class="num suave" data-rotulo="Saldo">{{ m.saldo|clp }}</td>
+        <td data-rotulo="Estado">
+          {% if m.estado == 'conciliado' %}<span class="plazo p-al-dia">Conciliado</span>{% if m.categoria %}<div class="ayuda" style="margin:2px 0 0">{{ m.categoria }}</div>{% endif %}
+          {% elif m.estado == 'parcial' %}<a class="plazo p-pronto" href="{% url 'banco_movimiento' m.pk %}">Parcial · faltan {{ m.por_conciliar|clp }}</a>
+          {% elif m.estado == 'categorizado' %}<span class="etiqueta">{{ m.categoria }}</span>
+          {% elif m.estado == 'ignorado' %}<span class="suave">Sin revisión</span>
+          {% else %}<a class="boton chico" href="{% url 'banco_movimiento' m.pk %}">{% if m.monto > 0 %}Conciliar cobro{% else %}Conciliar pago{% endif %}</a>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">No hay movimientos con estos filtros.</div>{% endif %}
+</div>
+<div>
+  <div class="panel">
+    <h2>Egresos por categoría</h2>
+    {% if por_categoria.egresos %}<ul class="barras-categoria">{% for n, v in por_categoria.egresos %}<li><div class="fila-cat"><span>{{ n }}</span><strong>{{ v|clp }}</strong></div><div class="barra-cat"><i style="width:{% widthratio v por_categoria.egresos.0.1 100 %}%"></i></div></li>{% endfor %}</ul>{% else %}<p class="suave">Sin cargos.</p>{% endif %}
+  </div>
+  <div class="panel">
+    <h2>Ingresos por categoría</h2>
+    {% if por_categoria.ingresos %}<ul class="barras-categoria barras-ingreso">{% for n, v in por_categoria.ingresos %}<li><div class="fila-cat"><span>{{ n }}</span><strong>{{ v|clp }}</strong></div><div class="barra-cat"><i style="width:{% widthratio v por_categoria.ingresos.0.1 100 %}%"></i></div></li>{% endfor %}</ul>{% else %}<p class="suave">Sin abonos.</p>{% endif %}
+  </div>
+</div>
+</div>
+<div class="barra-seleccion" id="barra-banco" hidden>
+  <span><strong id="sel-cuenta"></strong></span>
+  <form method="post" action="{% url 'banco_accion' %}" id="form-mov-cat">{% csrf_token %}
+    <input type="hidden" name="accion" value="categoria"><input type="hidden" name="volver" value="{{ request.get_full_path }}">
+    <select name="categoria" aria-label="Categoría"><option value="">Sin categoría</option>{% for c in categorias %}<option value="{{ c.pk }}">{{ c }}</option>{% endfor %}</select>
+    <button type="submit">Asignar categoría</button>
+  </form>
+  <form method="post" action="{% url 'banco_accion' %}" id="form-mov-ign">{% csrf_token %}
+    <input type="hidden" name="accion" value="ignorar"><input type="hidden" name="volver" value="{{ request.get_full_path }}">
+    <button type="submit">No requiere revisión</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const casillas = [...document.querySelectorAll(".sel-mov")], todas = document.getElementById("sel-todas"), barra = document.getElementById("barra-banco");
+  const marcadas = () => casillas.filter((c) => c.checked);
+  function actualizar() {
+    const n = marcadas().length;
+    barra.hidden = !n;
+    document.getElementById("sel-cuenta").textContent = n + (n === 1 ? " movimiento seleccionado" : " movimientos seleccionados");
+    casillas.forEach((c) => c.closest("tr").classList.toggle("seleccionada", c.checked));
+    if (todas) { todas.checked = n && n === casillas.length; todas.indeterminate = n > 0 && n < casillas.length; }
+  }
+  casillas.forEach((c) => c.addEventListener("change", actualizar));
+  if (todas) todas.addEventListener("change", () => { casillas.forEach((c) => { c.checked = todas.checked; }); actualizar(); });
+  ["form-mov-cat", "form-mov-ign"].forEach((id) => document.getElementById(id).addEventListener("submit", (e) => {
+    e.target.querySelectorAll("input[name=movimientos]").forEach((i) => i.remove());
+    marcadas().forEach((c) => { const i = document.createElement("input"); i.type = "hidden"; i.name = "movimientos"; i.value = c.value; e.target.append(i); });
+  }));
+  actualizar();
+})();
+</script>
+{% endblock %}

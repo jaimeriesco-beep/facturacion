@@ -1,0 +1,10 @@
+{% extends "core/base.html" %}
+{% block titulo %}Banco{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Banco</h1></div>
+<div class="panel vacio-grande">
+  <h2>Sube tu primera cartola</h2>
+  <p>Descarga la cartola del mes desde el banco y súbela aquí. La app reconoce la cuenta, carga los movimientos y te sugiere con qué facturas conciliar cada abono y cada cargo.</p>
+  <a class="boton primario" href="{% url 'banco_importar' %}">Subir cartola</a>
+</div>
+{% endblock %}

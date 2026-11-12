@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views as v
+from . import vistas_banco as vb
 from . import vistas_compras as vc
 from . import vistas_inventario as vi
 
@@ -35,6 +36,11 @@ urlpatterns = [
     path("documentos/<int:pk>/editar/", v.documento_editar, name="documento_editar"),
     path("documentos/<int:pk>/emitir/", v.documento_emitir, name="documento_emitir"),
     path("documentos/<int:pk>/reabrir/", v.documento_reabrir, name="documento_reabrir"),
+    path("banco/", vb.movimientos, name="banco"),
+    path("banco/accion/", vb.accion, name="banco_accion"),
+    path("banco/importar/", vb.importar, name="banco_importar"),
+    path("banco/movimientos/<int:pk>/", vb.movimiento, name="banco_movimiento"),
+    path("banco/configuracion/", vb.configuracion, name="banco_configuracion"),
     path("compras/", vc.compras, name="compras"),
     path("compras/accion/", vc.compras_accion, name="compras_accion"),
     path("compras/importar/", vc.importar, name="compras_importar"),

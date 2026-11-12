@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block titulo %}Configuración de inventario{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Inventario · configuración</h1>{% if sociedad_actual.inventario_activo %}<a class="boton" href="{% url 'inventario_stock' %}">Ir al stock</a>{% endif %}</div>
+<form method="post" class="panel">{% csrf_token %}
+  <label class="interruptor"><input type="checkbox" name="cfg-inventario_activo" {% if form.inventario_activo.value %}checked{% endif %} id="cfg-activo"><span><strong>Usar el módulo de inventario en {{ sociedad_actual }}</strong><br><span class="suave">Activa el menú Inventario, el control de stock en productos y la rebaja automática al emitir.</span></span></label>
+  <div id="cfg-opciones"{% if not form.inventario_activo.value %} class="atenuado"{% endif %}>
+    <fieldset class="opciones-radio"><legend>{{ form.inventario_rebaja.label }}</legend>
+      {% for r in form.inventario_rebaja %}<label>{{ r.tag }} {{ r.choice_label }}</label>{% endfor %}
+      <p class="ayuda">{{ form.inventario_rebaja.help_text }} Si despachas con guía y facturas después, elige guías.</p>
+    </fieldset>
+    <div class="campos campos-config">
+      <div class="campo"><label for="{{ form.inventario_desde.id_for_label }}">{{ form.inventario_desde.label }}</label>{{ form.inventario_desde }}<p class="ayuda">{{ form.inventario_desde.help_text }} Si la dejas vacía, queda la de hoy.</p>{{ form.inventario_desde.errors }}</div>
+    </div>
+    <label class="casilla">{{ form.inventario_nc_devuelve }} {{ form.inventario_nc_devuelve.label }}</label>
+    <p class="ayuda" style="margin-left:28px">Solo las que anulan el documento completo. Una devolución parcial se registra como entrada con el motivo «Devolución de cliente».</p>
+    <label class="casilla">{{ form.inventario_permite_negativo }} {{ form.inventario_permite_negativo.label }}</label>
+    <p class="ayuda" style="margin-left:28px">{{ form.inventario_permite_negativo.help_text }} Mantenerlo activado es útil si las cosechas se registran después de vender.</p>
+  </div>
+  <div class="acciones" style="margin-top:16px"><button class="primario" type="submit">Guardar</button></div>
+</form>
+
+{% if sociedad_actual.inventario_activo %}
+<div class="panel">
+  <h2>Bodegas</h2>
+  <p class="suave" style="margin-top:-4px">Lugares donde guardas producto: cámara de frío, packing, invernadero. Las ventas se descuentan de la bodega principal.</p>
+  <table>
+    <thead><tr><th>Nombre</th><th>Principal</th><th>Activa</th><th class="c-accion"></th></tr></thead>
+    <tbody>
+    {% for b in bodegas %}
+      <tr><td colspan="4" style="padding:0">
+        <form method="post" action="{% url 'inventario_bodega' b.pk %}" class="fila-form">{% csrf_token %}
+          <input name="bod-nombre" value="{{ b.nombre }}" maxlength="60" aria-label="Nombre de la bodega" required>
+          <label class="casilla"><input type="checkbox" name="bod-principal" {% if b.principal %}checked{% endif %}> Principal</label>
+          <label class="casilla"><input type="checkbox" name="bod-activa" {% if b.activa %}checked{% endif %}> Activa</label>
+          <button type="submit" class="chico">Guardar</button>
+        </form>
+      </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="{% url 'inventario_bodega_nueva' %}" class="fila-form nueva">{% csrf_token %}
+    <input name="bod-nombre" maxlength="60" placeholder="Nueva bodega, ej.: Cámara de frío" aria-label="Nombre de la nueva bodega" required>
+    <input type="hidden" name="bod-activa" value="on">
+    <button type="submit" class="chico">Agregar bodega</button>
+  </form>
+</div>
+<div class="panel">
+  <h2>Productos</h2>
+  <p>Cada producto tiene la opción «Controlar stock» y un «Stock mínimo» opcional en <a href="{% url 'productos' %}">Productos (SKU)</a>.
+  {% if sin_control %}Hoy no controlan stock: {% for p in sin_control %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}.{% else %}Todos los productos activos controlan stock; desmarca los que sean servicios.{% endif %}</p>
+  <p class="ayuda">Para empezar, carga lo que tienes hoy con <a href="{% url 'inventario_entrada' %}?motivo=inicial">Registrar entrada → Stock inicial</a>, o usa la <a href="{% url 'inventario_toma' %}">toma de inventario</a>.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("cfg-activo").addEventListener("change", (e) => document.getElementById("cfg-opciones").classList.toggle("atenuado", !e.target.checked));
+</script>
+{% endblock %}

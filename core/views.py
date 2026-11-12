@@ -27,6 +27,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
 from . import marketing, resumen
+from . import inventario
 from .dte import servicio
 from .dte.motor import ErrorDTE
 from .dte.pdf import generar_pdf
@@ -127,6 +128,8 @@ def inicio(request):
         1 for r in request.sociedad.recurrentes.filter(activa=True)
         if r.aplica(hoy().year, hoy().month) and not r.documentos.filter(periodo=periodo).exists())
     datos = resumen.calcular(request.sociedad, request.GET.get("vista", "mes"))
+    por_reponer = ([f for f in inventario.resumen(request.sociedad) if f["estado"] in ("reponer", "negativo")]
+                   if request.sociedad.inventario_activo else [])
     return render(request, "core/inicio.html", {
         **datos, "graficos": {**datos["series"], "antiguedad": resumen.antiguedad(request.sociedad)},
         "tabla": list(reversed(list(zip(datos["series"]["rangos"], datos["series"]["ventas"],
@@ -137,7 +140,7 @@ def inicio(request):
         "facturado": facturado,
         "mes": MESES[hoy().month - 1],
         "borradores": docs.ventas().filter(estado=Documento.BORRADOR).count(),
-        "recurrentes_pendientes": recurrentes_pendientes,
+        "recurrentes_pendientes": recurrentes_pendientes, "por_reponer": por_reponer,
         "proximas": por_cobrar.select_related("cliente").order_by("fecha_vencimiento")[:8],
     })
 
@@ -539,7 +542,7 @@ def documento_emitir(request, pk):
     if doc.es_cotizacion:
         return redirect("documento", pk=pk)
     form = EmitirForm(request.POST)
-    errores = doc.errores_para_emitir()
+    errores = doc.errores_para_emitir() + inventario.faltantes(doc)
     if doc.estado != Documento.BORRADOR:
         errores = ["El documento ya está emitido."]
     elif not form.is_valid():
@@ -976,6 +979,10 @@ def _intentar(request, accion, exito):
 @con_sociedad
 def documento_timbrar(request, pk):
     doc = _documento(request, pk)
+    if sin_stock := inventario.faltantes(doc):
+        for e in sin_stock:
+            messages.error(request, e)
+        return redirect("documento", pk=pk)
     if _intentar(request, lambda: servicio.emitir(doc),
                  lambda d: f"{d} timbrada y firmada. Ya puedes descargarla y enviarla al SII."):
         _agradecer(request, doc)

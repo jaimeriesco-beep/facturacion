@@ -86,6 +86,20 @@ class Sociedad(ConRut):
     gracias_asunto = models.CharField("Asunto", max_length=120,
                                       default="Gracias por tu compra y por preferirnos")
     gracias_mensaje = models.TextField("Mensaje", default=MENSAJE_GRACIAS)
+    # Inventario (módulo opcional por sociedad)
+    inventario_activo = models.BooleanField("Usar el módulo de inventario", default=False)
+    inventario_desde = models.DateField(
+        "Rebajar stock desde", null=True, blank=True,
+        help_text="Solo los documentos emitidos desde esta fecha mueven el stock.")
+    inventario_rebaja = models.CharField(
+        "El stock se rebaja con", max_length=7, default="factura",
+        choices=[("factura", "Facturas (afectas y exentas)"), ("guia", "Guías de despacho")],
+        help_text="Elige uno para no descontar dos veces la misma venta.")
+    inventario_nc_devuelve = models.BooleanField(
+        "Las notas de crédito que anulan una factura devuelven el stock", default=True)
+    inventario_permite_negativo = models.BooleanField(
+        "Permitir stock negativo", default=True,
+        help_text="Si lo desactivas, no se podrá emitir un documento sin stock suficiente.")
     ambiente = models.CharField(
         "Ambiente SII", max_length=13, default=CERTIFICACION,
         choices=[(CERTIFICACION, "Certificación (pruebas)"), (PRODUCCION, "Producción (real)")],
@@ -165,6 +179,12 @@ class Producto(models.Model):
     precio = models.DecimalField("Precio neto", max_digits=18, decimal_places=4, default=0)
     exento = models.BooleanField("Exento de IVA", default=False)
     activo = models.BooleanField(default=True)
+    controla_stock = models.BooleanField(
+        "Controlar stock", default=True,
+        help_text="Desmárcalo para servicios (despacho, mantención) que no tienen existencias.")
+    stock_minimo = models.DecimalField(
+        "Stock mínimo", max_digits=14, decimal_places=3, null=True, blank=True,
+        help_text="Bajo esta cantidad el producto aparece como «por reponer».")
 
     class Meta:
         ordering = ["nombre"]
@@ -725,3 +745,65 @@ def purgar_papelera(sociedad=None):
         except models.ProtectedError:
             pass   # algo lo referencia; se reintenta en la próxima pasada
     return borrados
+
+
+# ---------------------------------------------------------------- Inventario
+
+class Bodega(models.Model):
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="bodegas")
+    nombre = models.CharField(max_length=60)
+    activa = models.BooleanField(default=True)
+    principal = models.BooleanField(
+        default=False, help_text="Desde aquí se descuentan las ventas.")
+
+    class Meta:
+        ordering = ["-principal", "nombre"]
+
+    def __str__(self):
+        return self.nombre
+
+
+class Movimiento(models.Model):
+    """Entrada (cantidad positiva) o salida (negativa) de un producto en una bodega.
+
+    El stock nunca se escribe a mano: es la suma de los movimientos.
+    """
+    ENTRADAS = [("inicial", "Stock inicial"), ("cosecha", "Cosecha o producción"),
+                ("compra", "Compra"), ("devolucion", "Devolución de cliente"),
+                ("ajuste_mas", "Ajuste: sobrante"), ("traspaso_in", "Traspaso recibido"),
+                ("nota_credito", "Nota de crédito")]
+    SALIDAS = [("venta", "Venta"), ("merma", "Merma o pérdida"), ("consumo", "Consumo interno"),
+               ("muestra", "Muestra o donación"), ("ajuste_menos", "Ajuste: faltante"),
+               ("traspaso_out", "Traspaso enviado")]
+    MANUALES_ENTRADA = ["cosecha", "compra", "devolucion", "inicial"]
+    MANUALES_SALIDA = ["merma", "consumo", "muestra"]
+
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="movimientos")
+    producto = models.ForeignKey(Producto, on_delete=models.CASCADE, related_name="movimientos")
+    bodega = models.ForeignKey(Bodega, on_delete=models.PROTECT, related_name="movimientos")
+    fecha = models.DateField(default=hoy)
+    motivo = models.CharField(max_length=14, choices=ENTRADAS + SALIDAS)
+    cantidad = models.DecimalField(max_digits=14, decimal_places=3)
+    costo_unitario = models.DecimalField(
+        "Costo unitario", max_digits=18, decimal_places=4, null=True, blank=True)
+    documento = models.ForeignKey(
+        "Documento", null=True, blank=True, on_delete=models.CASCADE, related_name="movimientos")
+    lote = models.CharField("Lote o sector", max_length=60, blank=True)
+    nota = models.CharField(max_length=200, blank=True)
+    usuario = models.CharField(max_length=150, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        indexes = [models.Index(fields=["sociedad", "producto", "fecha"])]
+
+    def __str__(self):
+        return f"{self.get_motivo_display()} · {self.producto} · {self.cantidad}"
+
+    @property
+    def es_entrada(self):
+        return self.cantidad > 0
+
+    @property
+    def es_automatico(self):
+        return self.documento_id is not None

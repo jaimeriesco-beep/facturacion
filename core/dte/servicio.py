@@ -122,6 +122,10 @@ def consultar(envio):
     envio.estado, envio.detalle = estado, detalle
     envio.save(update_fields=["estado", "detalle"])
     envio.documentos.update(estado_sii=estado)
+    if estado == "rechazado":   # un DTE rechazado no es venta: devuelve el stock
+        from ..inventario import sincronizar_documento
+        for doc in envio.documentos.all():
+            sincronizar_documento(doc)
     return envio
 
 

@@ -1,0 +1,68 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'inventario_stock' %}">← Stock</a></p>
+<div class="titulo"><h1>{{ titulo }}</h1></div>
+<form method="post">{% csrf_token %}
+  <div class="panel">
+    {% if form.non_field_errors %}<div class="aviso error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+    <div class="campos campos-mov">
+      {% for campo in form %}
+      <div class="campo{% if campo.errors %} con-error{% endif %}{% if campo.name == 'nota' %} ancho{% endif %}">
+        <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}
+        {% if campo.help_text %}<p class="ayuda">{{ campo.help_text }}</p>{% endif %}{{ campo.errors }}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Productos</h2>
+    {{ lineas.management_form }}
+    <table class="lineas" id="lineas-mov">
+      <thead><tr><th>Producto</th><th class="c-cant">Cantidad</th>{% if entrada %}<th class="c-precio">Costo unitario <span class="suave">(opcional)</span></th>{% endif %}{% if not entrada and not traslado %}<th class="c-cant">Stock actual</th>{% endif %}<th class="c-quitar"></th></tr></thead>
+      <tbody>{% for f in lineas %}{% include "core/inventario/_linea_mov.html" %}{% endfor %}</tbody>
+    </table>
+    <template id="linea-mov-vacia">{% include "core/inventario/_linea_mov.html" with f=lineas.empty_form %}</template>
+    <button type="button" id="agregar-linea-mov" style="margin-top:8px">Agregar producto</button>
+    {% if entrada %}<p class="ayuda">El costo unitario sirve para valorizar el inventario (costo promedio ponderado). Para lo cosechado puedes dejarlo vacío.</p>{% endif %}
+  </div>
+  <div class="acciones">
+    <button class="primario" type="submit">{% if traslado %}Registrar traslado{% elif entrada %}Registrar entrada{% else %}Registrar salida{% endif %}</button>
+    <a class="boton" href="{% url 'inventario_stock' %}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+{{ productos_js|json_script:"productos-stock" }}
+<script>
+(function () {
+  const tabla = document.querySelector("#lineas-mov tbody"), total = document.getElementById("id_lineas-TOTAL_FORMS");
+  const datos = JSON.parse(document.getElementById("productos-stock").textContent);
+  function preparar(fila) {
+    const sel = fila.querySelector("select"), unidad = fila.querySelector("[data-unidad]"), stock = fila.querySelector("[data-stock]");
+    const pintar = () => {
+      const d = datos[sel.value] || {};
+      if (unidad) unidad.textContent = d.unidad || "";
+      if (stock) stock.textContent = sel.value ? (d.stock || "0") + " " + (d.unidad || "") : "";
+    };
+    sel.addEventListener("change", pintar); pintar();
+    fila.querySelector(".quitar-linea").addEventListener("click", () => {
+      if (tabla.querySelectorAll("tr").length > 1) { fila.remove(); renumerar(); }
+      else { fila.querySelectorAll("input,select").forEach((c) => { c.value = ""; }); pintar(); }
+    });
+  }
+  function renumerar() {
+    [...tabla.querySelectorAll("tr")].forEach((fila, i) => fila.querySelectorAll("[name],[id],[for]").forEach((el) => {
+      ["name", "id", "for"].forEach((a) => { if (el.hasAttribute(a)) el.setAttribute(a, el.getAttribute(a).replace(/lineas-(\d+|__prefix__)-/, "lineas-" + i + "-")); });
+    }));
+    total.value = tabla.querySelectorAll("tr").length;
+  }
+  tabla.querySelectorAll("tr").forEach(preparar);
+  document.getElementById("agregar-linea-mov").addEventListener("click", () => {
+    const nueva = document.getElementById("linea-mov-vacia").content.firstElementChild.cloneNode(true);
+    tabla.append(nueva); renumerar(); preparar(nueva); nueva.querySelector("select").focus();
+  });
+})();
+</script>
+{% endblock %}

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views as v
+from . import vistas_inventario as vi
 
 urlpatterns = [
     path("", v.inicio, name="inicio"),
@@ -33,6 +34,18 @@ urlpatterns = [
     path("documentos/<int:pk>/editar/", v.documento_editar, name="documento_editar"),
     path("documentos/<int:pk>/emitir/", v.documento_emitir, name="documento_emitir"),
     path("documentos/<int:pk>/reabrir/", v.documento_reabrir, name="documento_reabrir"),
+    path("inventario/", vi.stock, name="inventario_stock"),
+    path("inventario/movimientos/", vi.movimientos, name="inventario_movimientos"),
+    path("inventario/entrada/", vi.entrada, name="inventario_entrada"),
+    path("inventario/salida/", vi.salida, name="inventario_salida"),
+    path("inventario/toma/", vi.toma, name="inventario_toma"),
+    path("inventario/traslado/", vi.traslado, name="inventario_traslado"),
+    path("inventario/producto/<int:pk>/", vi.kardex, name="inventario_kardex"),
+    path("inventario/movimientos/<int:pk>/eliminar/", vi.movimiento_eliminar,
+         name="inventario_movimiento_eliminar"),
+    path("inventario/configuracion/", vi.config, name="inventario_config"),
+    path("inventario/bodegas/nueva/", vi.bodega_guardar, name="inventario_bodega_nueva"),
+    path("inventario/bodegas/<int:pk>/", vi.bodega_guardar, name="inventario_bodega"),
     path("papelera/", v.papelera, name="papelera"),
     path("papelera/accion/", v.papelera_accion, name="papelera_accion"),
     path("papelera/<int:pk>/deshacer/", v.papelera_deshacer, name="papelera_deshacer"),

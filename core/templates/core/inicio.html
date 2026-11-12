@@ -60,6 +60,9 @@
   </div>
 </div>
 
+{% if por_reponer %}
+<div class="aviso">{{ por_reponer|length }} producto{{ por_reponer|length|pluralize }} por reponer: {% for f in por_reponer|slice:":5" %}<a href="{% url 'inventario_kardex' f.producto.pk %}">{{ f.producto }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}{% if por_reponer|length > 5 %} y {{ por_reponer|length|add:"-5" }} más{% endif %}. <a href="{% url 'inventario_stock' %}?estado=reponer">Ver stock</a></div>
+{% endif %}
 {% if recurrentes_pendientes %}
 <div class="aviso">Hay {{ recurrentes_pendientes }} factura{{ recurrentes_pendientes|pluralize }} recurrente{{ recurrentes_pendientes|pluralize }} de {{ mes }} sin generar. <a href="{% url 'recurrentes' %}">Ir a recurrentes</a></div>
 {% endif %}

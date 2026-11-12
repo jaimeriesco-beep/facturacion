@@ -1,0 +1,27 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Movimientos de inventario{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Movimientos de inventario</h1>
+  <div class="acciones">
+    <a class="boton primario" href="{% url 'inventario_entrada' %}">Registrar entrada</a>
+    <a class="boton" href="{% url 'inventario_salida' %}">Registrar salida</a>
+  </div>
+</div>
+<form class="filtros" method="get">
+  <select name="producto" aria-label="Producto"><option value="">Todos los productos</option>{% for p in productos %}<option value="{{ p.pk }}" {% if g.producto == p.pk|stringformat:"s" %}selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+  <select name="tipo" aria-label="Tipo"><option value="">Entradas y salidas</option><option value="entrada" {% if g.tipo == 'entrada' %}selected{% endif %}>Solo entradas</option><option value="salida" {% if g.tipo == 'salida' %}selected{% endif %}>Solo salidas</option></select>
+  <select name="motivo" aria-label="Motivo"><option value="">Todos los motivos</option>{% for clave, nombre in motivos %}<option value="{{ clave }}" {% if g.motivo == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
+  <label class="suave">Desde <input type="date" name="desde" value="{{ g.desde }}"></label>
+  <label class="suave">Hasta <input type="date" name="hasta" value="{{ g.hasta }}"></label>
+  <button type="submit">Filtrar</button>
+  <a class="enlace-papelera" href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&amp;{% endif %}formato=excel">Descargar Excel</a>
+</form>
+<div class="panel tabla-panel">
+  {% if movimientos %}{% include "core/inventario/_movimientos_tabla.html" %}
+  {% if total > 500 %}<p class="ayuda" style="padding:0 10px 10px">Se muestran los 500 más recientes de {{ total }}. El Excel los incluye todos.</p>{% endif %}
+  {% else %}<div class="vacio">No hay movimientos{% if request.GET %} con estos filtros{% endif %}.</div>{% endif %}
+</div>
+<p class="ayuda">Los movimientos de ventas vienen de los documentos y se corrigen desde ellos. Los manuales se pueden eliminar con el basurero.</p>
+{% endblock %}

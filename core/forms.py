@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 from django.forms import inlineformset_factory
 
 from .models import (Cliente, Documento, Linea, Pago, Producto, Recurrente,
-                     RecurrenteLinea, Sociedad, hoy)
+                     RecurrenteLinea, Sociedad, hoy, Bodega, Movimiento)
 from .auth import buscar_usuario
 from .utils import decimal_cl, formatear_rut, leer_decimal_cl
 
@@ -185,12 +185,16 @@ class ClienteForm(FormBase):
 class ProductoForm(FormBase):
     class Meta:
         model = Producto
-        fields = ["codigo", "nombre", "descripcion", "unidad", "precio", "exento", "activo"]
+        fields = ["codigo", "nombre", "descripcion", "unidad", "precio", "exento", "activo",
+                  "controla_stock", "stock_minimo"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        con_coma(self, "precio")
+        con_coma(self, "precio", "stock_minimo")
         self.fields["precio"].help_text = "Puedes usar decimales con coma, por ejemplo 14,5."
+        self.fields["unidad"].help_text = "Hasta 4 letras. Ej.: KG, UN, ATAD (atado), BAND (bandeja)."
+        if not self.instance.sociedad_id or not self.instance.sociedad.inventario_activo:
+            del self.fields["controla_stock"], self.fields["stock_minimo"]
 
 
 class DocumentoForm(FormBase):
@@ -401,3 +405,99 @@ class EnviarCorreoForm(forms.Form):
 
 class EmitirForm(forms.Form):
     folio = forms.IntegerField(min_value=1, label="Folio asignado por el SII")
+
+
+
+# ---------------------------------------------------------------- Inventario
+
+class InventarioConfigForm(forms.ModelForm):
+    class Meta:
+        model = Sociedad
+        fields = ["inventario_activo", "inventario_desde", "inventario_rebaja",
+                  "inventario_nc_devuelve", "inventario_permite_negativo"]
+        widgets = {"inventario_desde": Fecha(), "inventario_rebaja": forms.RadioSelect}
+
+    def clean(self):
+        datos = super().clean()
+        if datos.get("inventario_activo") and not datos.get("inventario_desde"):
+            datos["inventario_desde"] = hoy()
+        return datos
+
+
+class BodegaForm(forms.ModelForm):
+    class Meta:
+        model = Bodega
+        fields = ["nombre", "principal", "activa"]
+
+
+class MovimientoForm(forms.Form):
+    """Cabecera de una entrada o salida manual."""
+    motivo = forms.ChoiceField(label="Motivo")
+    fecha = forms.DateField(label="Fecha", widget=Fecha(), initial=hoy)
+    bodega = forms.ModelChoiceField(label="Bodega", queryset=Bodega.objects.none(), empty_label=None)
+    lote = forms.CharField(label="Lote o sector", max_length=60, required=False,
+                           help_text="Opcional. Ej.: «Invernadero 2», «Cosecha semana 46».")
+    nota = forms.CharField(label="Nota", max_length=200, required=False)
+
+    def __init__(self, *args, sociedad, entrada, **kwargs):
+        super().__init__(*args, **kwargs)
+        motivos = dict(Movimiento.ENTRADAS + Movimiento.SALIDAS)
+        claves = Movimiento.MANUALES_ENTRADA if entrada else Movimiento.MANUALES_SALIDA
+        self.fields["motivo"].choices = [(c, motivos[c]) for c in claves]
+        self.fields["bodega"].queryset = sociedad.bodegas.filter(activa=True)
+        if not entrada:
+            del self.fields["lote"]
+
+    def clean_fecha(self):
+        fecha = self.cleaned_data["fecha"]
+        if fecha > hoy():
+            raise ValidationError("La fecha no puede ser futura.")
+        return fecha
+
+
+class MovimientoLineaForm(forms.Form):
+    producto = forms.ModelChoiceField(label="Producto", queryset=Producto.objects.none(),
+                                      required=False)
+    cantidad = NumeroCL(label="Cantidad", required=False, max_digits=14, decimal_places=3)
+    costo_unitario = NumeroCL(label="Costo unitario", required=False, max_digits=18, decimal_places=4)
+
+    def __init__(self, *args, productos=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["producto"].queryset = productos
+        self.fields["producto"].widget.attrs["class"] = "selector-producto"
+
+    def clean(self):
+        datos = super().clean()
+        producto, cantidad = datos.get("producto"), datos.get("cantidad")
+        if producto and not cantidad:
+            self.add_error("cantidad", "Indica la cantidad.")
+        if cantidad is not None and cantidad <= 0:
+            self.add_error("cantidad", "Debe ser mayor que cero.")
+        if cantidad and not producto:
+            self.add_error("producto", "Elige el producto.")
+        if datos.get("costo_unitario") is not None and datos["costo_unitario"] < 0:
+            self.add_error("costo_unitario", "No puede ser negativo.")
+        return datos
+
+
+MovimientoLineasFormSet = forms.formset_factory(MovimientoLineaForm, extra=0, min_num=1)
+
+
+class TrasladoForm(forms.Form):
+    fecha = forms.DateField(label="Fecha", widget=Fecha(), initial=hoy)
+    origen = forms.ModelChoiceField(label="Desde", queryset=Bodega.objects.none(), empty_label=None)
+    destino = forms.ModelChoiceField(label="Hacia", queryset=Bodega.objects.none(), empty_label=None)
+    nota = forms.CharField(label="Nota", max_length=200, required=False)
+
+    def __init__(self, *args, sociedad, **kwargs):
+        super().__init__(*args, **kwargs)
+        for campo in ("origen", "destino"):
+            self.fields[campo].queryset = sociedad.bodegas.filter(activa=True)
+
+    def clean(self):
+        datos = super().clean()
+        if datos.get("origen") and datos.get("origen") == datos.get("destino"):
+            raise ValidationError("Elige dos bodegas distintas.")
+        if datos.get("fecha") and datos["fecha"] > hoy():
+            self.add_error("fecha", "La fecha no puede ser futura.")
+        return datos

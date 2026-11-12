@@ -1,0 +1,61 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Stock · {{ sociedad_actual }}{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Stock</h1>
+  <div class="acciones">
+    <a class="boton primario" href="{% url 'inventario_entrada' %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#entrada"/></svg> Registrar entrada</a>
+    <a class="boton" href="{% url 'inventario_salida' %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#salida"/></svg> Registrar salida</a>
+    <a class="boton" href="{% url 'inventario_toma' %}">Toma de inventario</a>
+    {% if bodegas|length > 1 %}<a class="boton" href="{% url 'inventario_traslado' %}">Trasladar</a>{% endif %}
+  </div>
+</div>
+<div class="tarjetas">
+  <div class="tarjeta"><div class="rotulo">Productos con control de stock</div><div class="valor">{{ n_productos }}</div></div>
+  <div class="tarjeta{% if n_reponer %} alerta{% endif %}"><div class="rotulo">Por reponer</div><div class="valor">{{ n_reponer }}</div><div class="nota">En o bajo su stock mínimo</div></div>
+  <div class="tarjeta"><div class="rotulo">Sin stock</div><div class="valor">{{ n_sin }}</div></div>
+  <div class="tarjeta"><div class="rotulo">Valor del inventario</div><div class="valor">{{ valor|clp }}</div><div class="nota">{% if sin_costo %}{{ sin_costo }} producto{{ sin_costo|pluralize }} sin costo registrado{% else %}A costo promedio de entradas{% endif %}</div></div>
+</div>
+<form class="filtros" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Buscar producto o SKU" aria-label="Buscar producto">
+  {% if bodegas|length > 1 %}<select name="bodega" onchange="this.form.submit()" aria-label="Bodega"><option value="">Todas las bodegas</option>{% for b in bodegas %}<option value="{{ b.pk }}" {% if bodega == b %}selected{% endif %}>{{ b }}</option>{% endfor %}</select>{% endif %}
+  <select name="estado" onchange="this.form.submit()" aria-label="Estado">
+    <option value="">Todos</option>
+    <option value="reponer" {% if estado == 'reponer' %}selected{% endif %}>Por reponer</option>
+    <option value="sin" {% if estado == 'sin' %}selected{% endif %}>Sin stock</option>
+    <option value="ok" {% if estado == 'ok' %}selected{% endif %}>Con stock</option>
+  </select>
+  <button type="submit">Filtrar</button>
+  <a class="enlace-papelera" href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&amp;{% endif %}formato=excel">Descargar Excel</a>
+</form>
+<div class="panel tabla-panel">
+  {% if filas %}
+  <table>
+    <thead><tr><th>Producto</th><th>SKU</th><th class="num">Stock</th><th>Unidad</th><th class="num">Mínimo</th><th>Estado</th><th class="num">Costo prom.</th><th class="num">Valor</th><th class="c-accion"></th></tr></thead>
+    <tbody>
+    {% for f in filas %}
+      <tr>
+        <td data-rotulo="Producto"><a href="{% url 'inventario_kardex' f.producto.pk %}">{{ f.producto.nombre }}</a></td>
+        <td data-rotulo="SKU" class="suave">{{ f.producto.codigo|default:"—" }}</td>
+        <td class="num cantidad-stock{% if f.stock < 0 %} negativo{% endif %}" data-rotulo="Stock"><strong>{{ f.stock|numero }}</strong></td>
+        <td data-rotulo="Unidad">{{ f.producto.unidad|default:"—" }}</td>
+        <td class="num" data-rotulo="Mínimo">{% if f.minimo is not None %}{{ f.minimo|numero }}{% else %}<span class="suave">—</span>{% endif %}</td>
+        <td data-rotulo="Estado">{% if f.estado == 'negativo' %}<span class="plazo p-vencida">Negativo</span>{% elif f.estado == 'reponer' %}<span class="plazo p-pronto">Por reponer</span>{% elif f.estado == 'sin' %}<span class="plazo p-sin">Sin stock</span>{% else %}<span class="plazo p-al-dia">Con stock</span>{% endif %}</td>
+        <td class="num" data-rotulo="Costo prom.">{% if f.costo is not None %}{{ f.costo|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>
+        <td class="num" data-rotulo="Valor">{% if f.valor is not None %}{{ f.valor|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>
+        <td class="c-accion"><a class="icono-accion accion-ver" href="{% url 'inventario_kardex' f.producto.pk %}" title="Ver kardex" aria-label="Ver kardex de {{ f.producto }}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#ver"/></svg></a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif q or estado %}<div class="vacio">Ningún producto coincide con los filtros.</div>
+  {% else %}<div class="vacio">No hay productos con control de stock. Créalos en <a href="{% url 'productos' %}">Productos (SKU)</a> y marca «Controlar stock».</div>{% endif %}
+</div>
+{% if ultimos %}
+<div class="panel tabla-panel">
+  <div class="grafico-cabeza" style="padding:12px 10px 0"><h2>Últimos movimientos</h2><a href="{% url 'inventario_movimientos' %}">Ver todos</a></div>
+  {% include "core/inventario/_movimientos_tabla.html" with movimientos=ultimos compacto=True %}
+</div>
+{% endif %}
+{% endblock %}

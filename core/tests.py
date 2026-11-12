@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 from io import BytesIO
 
 from django.contrib.auth import get_user_model
@@ -10,7 +11,8 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from .models import (FACTURA, FACTURA_EXENTA, NOTA_CREDITO, Cliente, Documento, Linea, Pago,
-                     Producto, Recurrente, RecurrenteLinea, Sociedad, hoy, purgar_papelera)
+                     Movimiento, Producto, Recurrente, RecurrenteLinea, Sociedad, hoy,
+                     purgar_papelera, GUIA)
 from .utils import formatear_clp, formatear_rut, normalizar_rut
 
 
@@ -1201,3 +1203,125 @@ class PapeleraTests(Base):
         self.client.post(reverse("cotizacion_emitir", args=[otra.pk]))
         otra.refresh_from_db()
         self.assertEqual(otra.folio, cot.folio + 1)
+
+
+class InventarioTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.soc.inventario_activo = True
+        self.soc.inventario_desde = date(2020, 1, 1)
+        self.soc.save()
+        self.lechuga = Producto.objects.create(sociedad=self.soc, nombre="Lechuga hidropónica",
+                                               unidad="UN", precio=800, stock_minimo=20)
+        self.servicio = Producto.objects.create(sociedad=self.soc, nombre="Despacho", unidad="UN",
+                                                precio=5000, controla_stock=False)
+
+    def stock(self):
+        from .inventario import stock
+        return stock(self.soc).get(self.lechuga.pk, 0)
+
+    def venta(self, cantidad=30, tipo=FACTURA, folio=100):
+        doc = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=tipo, fecha_emision=hoy(),
+                                       ind_traslado=1 if tipo == GUIA else None)
+        Linea.objects.create(documento=doc, producto=self.lechuga, descripcion="Lechuga",
+                             cantidad=cantidad, precio=800)
+        Linea.objects.create(documento=doc, producto=self.servicio, descripcion="Despacho",
+                             cantidad=1, precio=5000)
+        doc.recalcular()
+        return doc, self.client.post(reverse("documento_emitir", args=[doc.pk]), {"folio": folio})
+
+    def entrada(self, cantidad, motivo="cosecha", costo=""):
+        return self.client.post(reverse("inventario_entrada"), {
+            "motivo": motivo, "fecha": hoy().isoformat(), "bodega": self.soc.bodegas.get().pk,
+            "lote": "Invernadero 2", "nota": "",
+            "lineas-TOTAL_FORMS": 1, "lineas-INITIAL_FORMS": 0, "lineas-MIN_NUM_FORMS": 1,
+            "lineas-MAX_NUM_FORMS": 1000, "lineas-0-producto": self.lechuga.pk,
+            "lineas-0-cantidad": cantidad, "lineas-0-costo_unitario": costo})
+
+    def test_entrada_y_venta_rebajan_stock(self):
+        self.client.get(reverse("inventario_config"))
+        from .inventario import bodega_principal
+        bodega_principal(self.soc)
+        r = self.entrada("100,5", costo="300")
+        self.assertRedirects(r, reverse("inventario_stock"), fetch_redirect_response=False)
+        self.assertEqual(self.stock(), Decimal("100.5"))
+        doc, _ = self.venta(30)
+        self.assertEqual(self.stock(), Decimal("70.5"))
+        self.assertFalse(Movimiento.objects.filter(producto=self.servicio).exists())  # servicio
+        # Volver a borrador devuelve el stock; la papelera también.
+        self.client.post(reverse("documento_reabrir", args=[doc.pk]))
+        self.assertEqual(self.stock(), Decimal("100.5"))
+        r = self.client.get(reverse("inventario_stock"))
+        self.assertContains(r, "Lechuga hidropónica")
+        self.assertContains(r, "$30.150")    # valor: 100,5 × 300
+
+    def test_nota_de_credito_que_anula_devuelve(self):
+        from .inventario import bodega_principal
+        bodega_principal(self.soc)
+        doc, _ = self.venta(10)
+        self.assertEqual(self.stock(), -10)
+        doc.refresh_from_db()
+        nc = Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=NOTA_CREDITO,
+                                      referencia=doc, codigo_referencia=1, razon_referencia="Anula",
+                                      fecha_emision=hoy())
+        Linea.objects.create(documento=nc, producto=self.lechuga, descripcion="Lechuga", cantidad=10, precio=800)
+        nc.estado = Documento.EMITIDO
+        nc.folio = 5
+        nc.save()
+        self.assertEqual(self.stock(), 0)
+
+    def test_guia_rebaja_solo_si_se_configura(self):
+        from .inventario import bodega_principal
+        bodega_principal(self.soc)
+        self.venta(5, tipo=GUIA, folio=7)
+        self.assertEqual(self.stock(), 0)
+        self.soc.inventario_rebaja = "guia"
+        self.soc.save()
+        doc, r = self.venta(5, tipo=GUIA, folio=8)
+        self.assertEqual(self.stock(), -5, [str(m) for m in get_messages(r.wsgi_request)])
+
+    def test_sin_stock_negativo_bloquea_emision(self):
+        self.soc.inventario_permite_negativo = False
+        self.soc.save()
+        doc, r = self.venta(30)
+        doc.refresh_from_db()
+        self.assertEqual(doc.estado, Documento.BORRADOR)
+        self.assertIn("Stock insuficiente", " ".join(str(m) for m in get_messages(r.wsgi_request)))
+
+    def test_toma_de_inventario_ajusta_diferencias(self):
+        from .inventario import bodega_principal
+        bodega_principal(self.soc)
+        self.entrada("50")
+        self.client.post(reverse("inventario_toma"), {
+            "bodega": self.soc.bodegas.get().pk, "fecha": hoy().isoformat(),
+            f"contado_{self.lechuga.pk}": "47,5"})
+        self.assertEqual(self.stock(), Decimal("47.5"))
+        ajuste = Movimiento.objects.get(motivo="ajuste_menos")
+        self.assertEqual(ajuste.cantidad, Decimal("-2.5"))
+
+    def test_merma_y_eliminar_movimiento_manual(self):
+        from .inventario import bodega_principal
+        bodega_principal(self.soc)
+        self.entrada("20")
+        self.client.post(reverse("inventario_salida"), {
+            "motivo": "merma", "fecha": hoy().isoformat(), "bodega": self.soc.bodegas.get().pk,
+            "nota": "Daño por calor", "lineas-TOTAL_FORMS": 1, "lineas-INITIAL_FORMS": 0,
+            "lineas-MIN_NUM_FORMS": 1, "lineas-MAX_NUM_FORMS": 1000,
+            "lineas-0-producto": self.lechuga.pk, "lineas-0-cantidad": "3"})
+        self.assertEqual(self.stock(), 17)
+        merma = Movimiento.objects.get(motivo="merma")
+        self.client.post(reverse("inventario_movimiento_eliminar", args=[merma.pk]))
+        self.assertEqual(self.stock(), 20)
+        self.assertContains(self.client.get(reverse("inventario_kardex", args=[self.lechuga.pk])), "Cosecha")
+
+    def test_documentos_anteriores_a_la_activacion_no_mueven(self):
+        self.soc.inventario_desde = hoy() + timedelta(days=1)
+        self.soc.save()
+        self.venta(10)
+        self.assertEqual(self.stock(), 0)
+
+    def test_desactivado_redirige_a_configuracion(self):
+        self.soc.inventario_activo = False
+        self.soc.save()
+        self.assertRedirects(self.client.get(reverse("inventario_stock")), reverse("inventario_config"))
+        self.assertNotContains(self.client.get(reverse("inicio")), "Movimientos</span>")

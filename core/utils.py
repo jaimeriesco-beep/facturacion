@@ -88,8 +88,8 @@ def formatear_rut(rut):
 
 def formatear_clp(valor):
     try:
-        return "$" + f"{int(valor):,}".replace(",", ".")
-    except (TypeError, ValueError):
+        return "$" + f"{int(redondear(valor)):,}".replace(",", ".")
+    except (TypeError, ValueError, ArithmeticError):
         return ""
 
 

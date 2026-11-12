@@ -1,0 +1,19 @@
+{% load formato static %}<table class="tabla-movimientos">
+  <thead><tr><th>Fecha</th>{% if not sin_producto %}<th>Producto</th>{% endif %}<th>Motivo</th>{% if not compacto %}<th>Bodega</th>{% endif %}<th class="num">Entrada</th><th class="num">Salida</th>{% if con_saldo %}<th class="num">Saldo</th>{% endif %}{% if not compacto %}<th class="num">Costo unit.</th>{% endif %}<th>Documento o nota</th>{% if not compacto %}<th class="c-accion"></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for m in movimientos %}
+    <tr>
+      <td data-rotulo="Fecha">{{ m.fecha|date:"d/m/Y" }}</td>
+      {% if not sin_producto %}<td data-rotulo="Producto"><a href="{% url 'inventario_kardex' m.producto_id %}">{{ m.producto }}</a></td>{% endif %}
+      <td data-rotulo="Motivo"><span class="mov {% if m.cantidad > 0 %}mov-entrada{% else %}mov-salida{% endif %}">{{ m.get_motivo_display }}</span></td>
+      {% if not compacto %}<td data-rotulo="Bodega">{{ m.bodega }}</td>{% endif %}
+      <td class="num" data-rotulo="Entrada">{% if m.cantidad > 0 %}+{{ m.cantidad|numero }} <span class="suave">{{ m.producto.unidad }}</span>{% endif %}</td>
+      <td class="num" data-rotulo="Salida">{% if m.cantidad < 0 %}{{ m.cantidad|numero }} <span class="suave">{{ m.producto.unidad }}</span>{% endif %}</td>
+      {% if con_saldo %}<td class="num{% if m.saldo < 0 %} negativo{% endif %}" data-rotulo="Saldo"><strong>{{ m.saldo|numero }}</strong></td>{% endif %}
+      {% if not compacto %}<td class="num" data-rotulo="Costo unit.">{% if m.costo_unitario is not None %}${{ m.costo_unitario|numero }}{% endif %}</td>{% endif %}
+      <td data-rotulo="Documento o nota">{% if m.documento %}<a href="{% url 'documento' m.documento_id %}">{{ m.documento }}</a>{% else %}{{ m.nota }}{% endif %}{% if m.lote %} <span class="etiqueta">{{ m.lote }}</span>{% endif %}{% if m.usuario and not compacto %}<div class="ayuda" style="margin:0">{{ m.usuario }}</div>{% endif %}</td>
+      {% if not compacto %}<td class="c-accion">{% if not m.documento_id %}<form method="post" action="{% url 'inventario_movimiento_eliminar' m.pk %}" class="form-icono" onsubmit="return confirm('¿Eliminar este movimiento? El stock se recalcula.')">{% csrf_token %}<input type="hidden" name="volver" value="{{ request.get_full_path }}"><button type="submit" class="icono-accion basurero" title="Eliminar movimiento" aria-label="Eliminar movimiento"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button></form>{% endif %}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>

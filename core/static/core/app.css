@@ -319,3 +319,36 @@ tr.seleccionada td { background: #f1f6ef; }
 .barra-papelera .todas { display: inline-flex; gap: 8px; align-items: center; margin-right: auto; font-size: 14px; }
 .barra-papelera .todas input { width: 17px; height: 17px; }
 .c-sel input { width: 17px; height: 17px; }
+
+/* Inventario */
+.miga { margin: 0 0 6px; font-size: 14px; }
+.negativo, .valor.negativo { color: var(--rojo); }
+.mov { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.mov::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+.mov-entrada::before { background: var(--verde); }
+.mov-salida::before { background: var(--rojo); }
+.campos-mov { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 16px; }
+.campos-mov .ancho { grid-column: 1 / -1; }
+.con-unidad { display: flex; align-items: center; gap: 6px; }
+.con-unidad input { min-width: 0; }
+.diferencia.cuadra { color: var(--suave); }
+.diferencia.sobra { color: var(--verde-oscuro); font-weight: 600; }
+.diferencia.falta { color: var(--rojo); font-weight: 600; }
+#tabla-toma input { width: 120px; text-align: right; }
+.interruptor { display: flex; gap: 12px; align-items: flex-start; padding: 4px 0 14px; border-bottom: 1px solid var(--borde); margin-bottom: 14px; cursor: pointer; }
+.interruptor input { width: 20px; height: 20px; margin-top: 2px; }
+.atenuado { opacity: .5; }
+.opciones-radio { border: 0; padding: 0; margin: 0 0 12px; }
+.opciones-radio legend { font-weight: 600; margin-bottom: 6px; }
+.opciones-radio label { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+.opciones-radio ul { list-style: none; padding: 0; margin: 0; }
+.casilla { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.casilla input { width: auto; }
+.fila-form { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 8px 10px; }
+.fila-form input[name="bod-nombre"] { flex: 1; min-width: 200px; max-width: 360px; }
+.fila-form.nueva { border-top: 1px solid var(--borde); margin-top: 6px; padding-top: 12px; }
+.boton { display: inline-flex; align-items: center; gap: 6px; }
+.boton .icono, button .icono { width: 16px; height: 16px; flex: none; }
+.opciones-radio label { justify-content: flex-start; }
+.opciones-radio input[type=radio] { width: auto; margin: 0; }
+.campos-config { max-width: 320px; }

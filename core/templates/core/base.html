@@ -22,6 +22,11 @@
     <a href="{% url 'clientes' %}" class="{% if 'cliente' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#clientes"/></svg><span>Clientes</span></a>
     <a href="{% url 'productos' %}" class="{% if 'producto' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#productos"/></svg><span>Productos (SKU)</span></a>
     <a href="{% url 'papelera' %}" class="{% if u == 'papelera' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg><span>Papelera</span></a>
+    {% if sociedad_actual.inventario_activo %}
+    <div class="seccion">Inventario</div>
+    <a href="{% url 'inventario_stock' %}" class="{% if u == 'inventario_stock' or u == 'inventario_kardex' or u == 'inventario_entrada' or u == 'inventario_salida' or u == 'inventario_toma' or u == 'inventario_traslado' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#inventario"/></svg><span>Stock</span></a>
+    <a href="{% url 'inventario_movimientos' %}" class="{% if u == 'inventario_movimientos' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#movimientos"/></svg><span>Movimientos</span></a>
+    {% endif %}
     <div class="seccion">Compras</div>
     <span class="pronto"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#compras"/></svg><span>Próximamente</span></span>
     <div class="seccion">Marketing</div>
@@ -30,6 +35,7 @@
     <a href="{% url 'reportes' %}" class="{% if u == 'reportes' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#reportes"/></svg><span>Reportes</span></a>
     <div class="seccion">Configuración</div>
     <a href="{% url 'conexion_sii' %}" class="{% if u == 'conexion_sii' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#sii"/></svg><span>Conexión SII</span></a>
+    <a href="{% url 'inventario_config' %}" class="{% if u == 'inventario_config' %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#ajustes"/></svg><span>Inventario</span></a>
     <a href="{% url 'sociedades' %}" class="{% if 'sociedad' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#sociedades"/></svg><span>Sociedades</span></a>
     {% if request.user.is_superuser %}
     <a href="{% url 'usuarios' %}" class="{% if 'usuario' in u %}activo{% endif %}"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#usuarios"/></svg><span>Usuarios</span></a>

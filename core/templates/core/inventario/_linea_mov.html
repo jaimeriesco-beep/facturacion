@@ -1,0 +1,7 @@
+{% load static %}<tr>
+  <td class="c-prod" data-rotulo="Producto">{{ f.producto }}{{ f.producto.errors }}</td>
+  <td class="c-cant" data-rotulo="Cantidad"><div class="con-unidad">{{ f.cantidad }}<span class="suave" data-unidad></span></div>{{ f.cantidad.errors }}</td>
+  {% if entrada %}<td class="c-precio" data-rotulo="Costo unitario">{{ f.costo_unitario }}{{ f.costo_unitario.errors }}</td>{% endif %}
+  {% if not entrada and not traslado %}<td class="c-cant suave" data-rotulo="Stock actual" data-stock></td>{% endif %}
+  <td class="c-quitar"><button type="button" class="icono-accion basurero quitar-linea" title="Quitar" aria-label="Quitar producto"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button></td>
+</tr>

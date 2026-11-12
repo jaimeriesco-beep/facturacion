@@ -1,0 +1,135 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Compras y gastos{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <h1>Compras y gastos</h1>
+  <div class="acciones">
+    <a class="boton" href="{% url 'compras_categorias' %}">Categorías</a>
+    <a class="boton" href="{% url 'compra_nueva' %}">Registrar manual</a>
+    <a class="boton primario" href="{% url 'compras_importar' %}">Importar desde el SII</a>
+  </div>
+</div>
+{% if not periodos %}
+<div class="panel vacio-grande">
+  <h2>Aún no hay compras</h2>
+  <p>Descarga el detalle de compras del Registro de Compras y Ventas del SII y súbelo aquí. Te explicamos cómo paso a paso.</p>
+  <a class="boton primario" href="{% url 'compras_importar' %}">Importar desde el SII</a>
+</div>
+{% else %}
+<div class="tarjetas">
+  <div class="tarjeta destacada"><div class="rotulo">Gasto neto</div><div class="valor">{{ gasto|clp }}</div><div class="nota">Neto + exento, descontadas las notas de crédito</div></div>
+  <div class="tarjeta"><div class="rotulo">IVA crédito fiscal</div><div class="valor">{{ iva|clp }}</div><div class="nota">IVA recuperable de estas compras</div></div>
+  <div class="tarjeta"><div class="rotulo">Por pagar</div><div class="valor">{{ por_pagar|clp }}</div></div>
+  <div class="tarjeta{% if vencido %} alerta{% endif %}"><div class="rotulo">Vencido</div><div class="valor">{{ vencido|clp }}</div></div>
+</div>
+<form class="filtros" method="get" id="filtros-compras">
+  <select name="periodo" onchange="this.form.submit()" aria-label="Período">
+    {% for valor, nombre in periodos %}<option value="{{ valor }}" {% if periodo == valor %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+    <option value="todos" {% if periodo == 'todos' %}selected{% endif %}>Todos los períodos</option>
+  </select>
+  <input type="search" name="q" value="{{ g.q }}" placeholder="Proveedor, RUT o folio" aria-label="Buscar">
+  <select name="categoria" onchange="this.form.submit()" aria-label="Categoría">
+    <option value="">Todas las categorías</option><option value="sin" {% if g.categoria == 'sin' %}selected{% endif %}>Sin categoría</option>
+    {% for c in categorias %}<option value="{{ c.pk }}" {% if g.categoria == c.pk|stringformat:"s" %}selected{% endif %}>{{ c }}</option>{% endfor %}
+  </select>
+  <select name="estado" onchange="this.form.submit()" aria-label="Pago">
+    <option value="">Pagadas y por pagar</option>
+    <option value="por_pagar" {% if g.estado == 'por_pagar' %}selected{% endif %}>Por pagar</option>
+    <option value="vencida" {% if g.estado == 'vencida' %}selected{% endif %}>Vencidas</option>
+    <option value="pagada" {% if g.estado == 'pagada' %}selected{% endif %}>Pagadas</option>
+  </select>
+  <button type="submit">Filtrar</button>
+  <a class="enlace-papelera" href="?{% if request.GET.urlencode %}{{ request.GET.urlencode }}&amp;{% endif %}formato=excel">Descargar Excel</a>
+</form>
+{% if sin_categoria %}<div class="aviso">{{ sin_categoria }} compra{{ sin_categoria|pluralize }} sin categoría. Márcalas y asígnales una para ver bien en qué se gasta. <a href="?periodo={{ periodo }}&amp;categoria=sin">Ver solo esas</a></div>{% endif %}
+<div class="dos dos-compras">
+<div class="panel tabla-panel">
+  {% if compras %}
+  <table class="tabla-compras">
+    <thead><tr><th class="c-sel"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todas"></th><th>Fecha</th><th>Documento</th><th>Proveedor</th><th>Categoría</th><th class="num">Neto</th><th class="num">Total</th><th>Pago</th></tr></thead>
+    <tbody>
+    {% for c in compras %}
+      <tr>
+        <td class="c-sel"><input type="checkbox" class="sel-compra" value="{{ c.pk }}" data-saldo="{{ c.saldo }}" aria-label="Seleccionar {{ c }}"></td>
+        <td data-rotulo="Fecha">{{ c.fecha_emision|date:"d/m/Y" }}</td>
+        <td data-rotulo="Documento"><a href="{% url 'compra' c.pk %}">{{ c }}</a>{% if c.estado_rcv != 'registro' %} <span class="etiqueta">{{ c.get_estado_rcv_display }}</span>{% endif %}</td>
+        <td data-rotulo="Proveedor"><a href="{% url 'proveedor' c.proveedor_id %}" class="enlace-suave">{{ c.proveedor }}</a></td>
+        <td data-rotulo="Categoría">{% if c.categoria %}{{ c.categoria }}{% else %}<span class="suave">Sin categoría</span>{% endif %}</td>
+        <td class="num" data-rotulo="Neto">{% if c.es_nota_credito %}-{% endif %}{{ c.neto|add:c.exento|clp }}</td>
+        <td class="num" data-rotulo="Total">{% if c.es_nota_credito %}-{% endif %}{{ c.total|clp }}</td>
+        <td data-rotulo="Pago">{% if c.estado_pago == 'nc' %}<span class="suave">Nota de crédito</span>{% elif c.estado_pago == 'pagada' %}<span class="plazo p-al-dia">Pagada</span>{% elif c.estado_pago == 'vencida' %}<span class="plazo p-vencida">Vencida · {{ c.saldo|clp }}</span>{% else %}<span class="plazo p-sin">Por pagar · {{ c.saldo|clp }}</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="vacio">No hay compras con estos filtros.</div>{% endif %}
+</div>
+<div class="panel">
+  <h2>En qué se gastó</h2>
+  {% if por_categoria %}
+  <ul class="barras-categoria">
+    {% for nombre, valor in por_categoria %}<li><div class="fila-cat"><span>{{ nombre }}</span><strong>{{ valor|clp }}</strong></div><div class="barra-cat"><i style="width:{% widthratio valor por_categoria.0.1 100 %}%"></i></div></li>{% endfor %}
+  </ul>
+  {% else %}<p class="suave">Sin datos.</p>{% endif %}
+</div>
+</div>
+{% endif %}
+<div class="barra-seleccion" id="barra-compras" hidden>
+  <span><strong id="sel-cuenta"></strong> · por pagar <strong id="sel-saldo"></strong></span>
+  <form method="post" action="{% url 'compras_accion' %}" class="form-icono" id="form-categoria">{% csrf_token %}
+    <input type="hidden" name="accion" value="categoria"><input type="hidden" name="volver" value="{{ request.get_full_path }}">
+    <select name="categoria" aria-label="Categoría"><option value="">Sin categoría</option>{% for c in categorias %}<option value="{{ c.pk }}">{{ c }}</option>{% endfor %}</select>
+    <label class="casilla" style="margin:0"><input type="checkbox" name="recordar" checked> Recordar para el proveedor</label>
+    <button type="submit">Asignar categoría</button>
+  </form>
+  <button type="button" class="primario" id="sel-pagar">Marcar como pagadas</button>
+</div>
+<dialog id="pagar-compras" class="ventana ventana-chica">
+  <form method="post" action="{% url 'compras_accion' %}" id="form-pagar">{% csrf_token %}
+    <input type="hidden" name="accion" value="pagar"><input type="hidden" name="volver" value="{{ request.get_full_path }}">
+    <div class="ventana-barra"><strong>Marcar compras como pagadas</strong><button type="button" data-cerrar>Cerrar ✕</button></div>
+    <div class="ventana-cuerpo">
+      <p id="pagar-resumen" style="margin-top:0"></p>
+      <div class="campo"><label for="pc-fecha">Fecha de pago <span class="suave">(opcional)</span></label><input type="date" id="pc-fecha" name="fecha"><p class="ayuda">Si la dejas vacía, queda la de hoy.</p></div>
+      <div class="campo"><label for="pc-medio">Medio de pago</label><select id="pc-medio" name="medio">{% for v, n in medios %}<option value="{{ v }}">{{ n }}</option>{% endfor %}</select></div>
+      <div class="campo"><label for="pc-nota">Referencia <span class="suave">(opcional)</span></label><input id="pc-nota" name="nota" maxlength="120"></div>
+      <div class="acciones"><button class="primario" type="submit">Confirmar</button><button type="button" data-cerrar>Cancelar</button></div>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const casillas = [...document.querySelectorAll(".sel-compra")], todas = document.getElementById("sel-todas");
+  const barra = document.getElementById("barra-compras"), clp = (n) => "$" + Math.round(n).toLocaleString("es-CL");
+  const marcadas = () => casillas.filter((c) => c.checked);
+  function ocultos(form) {
+    form.querySelectorAll("input[name=compras]").forEach((i) => i.remove());
+    marcadas().forEach((c) => { const i = document.createElement("input"); i.type = "hidden"; i.name = "compras"; i.value = c.value; form.append(i); });
+  }
+  function actualizar() {
+    const m = marcadas();
+    barra.hidden = !m.length;
+    document.getElementById("sel-cuenta").textContent = m.length + (m.length === 1 ? " compra seleccionada" : " compras seleccionadas");
+    document.getElementById("sel-saldo").textContent = clp(m.reduce((a, c) => a + Number(c.dataset.saldo), 0));
+    casillas.forEach((c) => c.closest("tr").classList.toggle("seleccionada", c.checked));
+    if (todas) { todas.checked = m.length && m.length === casillas.length; todas.indeterminate = m.length > 0 && m.length < casillas.length; }
+  }
+  casillas.forEach((c) => c.addEventListener("change", actualizar));
+  if (todas) todas.addEventListener("change", () => { casillas.forEach((c) => { c.checked = todas.checked; }); actualizar(); });
+  document.getElementById("form-categoria").addEventListener("submit", (e) => ocultos(e.target));
+  const ventana = document.getElementById("pagar-compras"), formPagar = document.getElementById("form-pagar");
+  document.getElementById("pc-fecha").max = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  document.getElementById("sel-pagar").addEventListener("click", () => {
+    const m = marcadas();
+    document.getElementById("pagar-resumen").textContent = m.length + " compra" + (m.length > 1 ? "s" : "") + " · se paga el saldo completo: " + clp(m.reduce((a, c) => a + Number(c.dataset.saldo), 0));
+    ventana.showModal();
+  });
+  formPagar.addEventListener("submit", () => ocultos(formPagar));
+  ventana.querySelectorAll("[data-cerrar]").forEach((b) => b.addEventListener("click", () => ventana.close()));
+  actualizar();
+})();
+</script>
+{% endblock %}

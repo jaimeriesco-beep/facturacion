@@ -102,7 +102,7 @@
     contenedor.appendChild(svg);
   }
 
-  const VERDE = "#2f8a55", AZUL = "#2a78d6";
+  const VERDE = "#2f8a55", AZUL = "#2a78d6", NARANJO = "#c2410c";
   function dibujar() {
     const q = (id) => document.getElementById(id);
     if (q("g-ventas")) columnas(q("g-ventas"), g.etiquetas, [{ nombre: "Ventas netas", valores: g.ventas, color: VERDE }], g.rangos);
@@ -110,6 +110,10 @@
       { nombre: "Facturado", valores: g.facturado, color: VERDE },
       { nombre: "Cobrado", valores: g.cobrado, color: AZUL }], g.rangos);
     if (q("g-clientes")) barras(q("g-clientes"), g.clientes, VERDE);
+    if (q("g-gastos")) columnas(q("g-gastos"), g.etiquetas, [
+      { nombre: "Ventas netas", valores: g.ventas, color: VERDE },
+      { nombre: "Gastos", valores: g.gastos, color: NARANJO }], g.rangos);
+    if (q("g-categorias")) barras(q("g-categorias"), g.categorias, NARANJO);
     if (q("g-antiguedad")) barras(q("g-antiguedad"),
       g.antiguedad.etiquetas.map((nombre, i) => ({ nombre, valor: g.antiguedad.valores[i] })), AZUL);
   }

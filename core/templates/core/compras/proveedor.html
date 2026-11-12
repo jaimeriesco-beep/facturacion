@@ -1,0 +1,18 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}{{ p }}{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'proveedores' %}">← Proveedores</a></p>
+<div class="titulo"><h1>{{ p }} <span class="suave" style="font-weight:400">· {{ p.rut|rut }}</span></h1></div>
+<form method="post" class="panel">{% csrf_token %}
+  {% include "core/_campos.html" %}
+  <label class="casilla"><input type="checkbox" name="aplicar" checked> Aplicar la categoría habitual a sus compras que no tienen categoría</label>
+  <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Guardar</button></div>
+</form>
+<div class="panel tabla-panel">
+  <h2 style="padding:12px 10px 0">Últimas compras</h2>
+  {% if compras %}<table><thead><tr><th>Fecha</th><th>Documento</th><th>Categoría</th><th class="num">Total</th><th class="num">Saldo</th></tr></thead><tbody>
+  {% for c in compras %}<tr><td>{{ c.fecha_emision|date:"d/m/Y" }}</td><td><a href="{% url 'compra' c.pk %}">{{ c }}</a></td><td>{{ c.categoria|default:"—" }}</td><td class="num">{% if c.es_nota_credito %}-{% endif %}{{ c.total|clp }}</td><td class="num">{{ c.saldo|clp }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<div class="vacio">Sin compras.</div>{% endif %}
+</div>
+{% endblock %}

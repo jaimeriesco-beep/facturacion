@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import views as v
+from . import vistas_compras as vc
 from . import vistas_inventario as vi
 
 urlpatterns = [
@@ -34,6 +35,16 @@ urlpatterns = [
     path("documentos/<int:pk>/editar/", v.documento_editar, name="documento_editar"),
     path("documentos/<int:pk>/emitir/", v.documento_emitir, name="documento_emitir"),
     path("documentos/<int:pk>/reabrir/", v.documento_reabrir, name="documento_reabrir"),
+    path("compras/", vc.compras, name="compras"),
+    path("compras/accion/", vc.compras_accion, name="compras_accion"),
+    path("compras/importar/", vc.importar, name="compras_importar"),
+    path("compras/nueva/", vc.compra_nueva, name="compra_nueva"),
+    path("compras/<int:pk>/", vc.compra, name="compra"),
+    path("compras/<int:pk>/eliminar/", vc.compra_eliminar, name="compra_eliminar"),
+    path("compras/pagos/<int:pk>/eliminar/", vc.compra_pago_eliminar, name="compra_pago_eliminar"),
+    path("compras/proveedores/", vc.proveedores, name="proveedores"),
+    path("compras/proveedores/<int:pk>/", vc.proveedor, name="proveedor"),
+    path("compras/categorias/", vc.categorias, name="compras_categorias"),
     path("inventario/", vi.stock, name="inventario_stock"),
     path("inventario/movimientos/", vi.movimientos, name="inventario_movimientos"),
     path("inventario/entrada/", vi.entrada, name="inventario_entrada"),

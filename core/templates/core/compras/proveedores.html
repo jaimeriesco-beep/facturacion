@@ -1,0 +1,21 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Proveedores{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Proveedores</h1><a class="boton" href="{% url 'compras_importar' %}">Importar compras</a></div>
+<form class="filtros" method="get"><input type="search" name="q" value="{{ q }}" placeholder="Nombre o RUT" aria-label="Buscar proveedor"><button type="submit">Buscar</button></form>
+<div class="panel tabla-panel">
+  {% if proveedores %}
+  <table><thead><tr><th>Proveedor</th><th>RUT</th><th>Categoría habitual</th><th class="num">Documentos</th><th class="num">Comprado</th><th class="num">Por pagar</th></tr></thead><tbody>
+  {% for p in proveedores %}<tr>
+    <td data-rotulo="Proveedor"><a href="{% url 'proveedor' p.pk %}">{{ p }}</a>{% if p.nombre_fantasia %}<div class="ayuda" style="margin:0">{{ p.razon_social }}</div>{% endif %}</td>
+    <td data-rotulo="RUT">{{ p.rut|rut }}</td>
+    <td data-rotulo="Categoría">{{ p.categoria|default:"—" }}</td>
+    <td class="num" data-rotulo="Documentos">{{ p.n }}</td>
+    <td class="num" data-rotulo="Comprado">{{ p.comprado|default:0|clp }}</td>
+    <td class="num" data-rotulo="Por pagar">{% if p.saldo %}<strong>{{ p.saldo|clp }}</strong>{% else %}<span class="suave">$0</span>{% endif %}</td>
+  </tr>{% endfor %}
+  </tbody></table>
+  {% else %}<div class="vacio">{% if q %}Ningún proveedor coincide.{% else %}Los proveedores se crean solos al importar las compras del SII.{% endif %}</div>{% endif %}
+</div>
+{% endblock %}

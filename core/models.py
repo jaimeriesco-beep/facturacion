@@ -840,3 +840,166 @@ def firma_de(usuario, sociedad):
     if perfil.telefono:
         lineas.append(perfil.telefono)
     return "\n".join(lineas)
+
+
+# ---------------------------------------------------------------- Compras
+
+CATEGORIAS_INICIALES = [
+    "Semillas y plantines", "Fertilizantes y sustratos", "Envases y embalaje", "Insumos de riego",
+    "Combustible y transporte", "Arriendo", "Servicios básicos (luz, agua, gas)",
+    "Mantención y reparaciones", "Herramientas y equipos", "Servicios profesionales",
+    "Telefonía e internet", "Otros gastos",
+]
+
+
+class CategoriaGasto(models.Model):
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="categorias_gasto")
+    nombre = models.CharField(max_length=60)
+    activa = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        constraints = [models.UniqueConstraint(fields=["sociedad", "nombre"], name="categoria_unica")]
+
+    def __str__(self):
+        return self.nombre
+
+
+def categorias_de(sociedad):
+    """Las categorías de gasto de la sociedad; crea las iniciales la primera vez."""
+    if not sociedad.categorias_gasto.exists():
+        CategoriaGasto.objects.bulk_create(
+            [CategoriaGasto(sociedad=sociedad, nombre=n) for n in CATEGORIAS_INICIALES])
+    return sociedad.categorias_gasto.filter(activa=True)
+
+
+class Proveedor(models.Model):
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="proveedores")
+    rut = models.CharField("RUT", max_length=12)
+    razon_social = models.CharField("Razón social", max_length=100)
+    nombre_fantasia = models.CharField("Nombre de fantasía", max_length=100, blank=True)
+    categoria = models.ForeignKey(
+        CategoriaGasto, null=True, blank=True, on_delete=models.SET_NULL,
+        verbose_name="Categoría habitual",
+        help_text="Las compras nuevas de este proveedor quedan con esta categoría.")
+    dias_pago = models.PositiveSmallIntegerField(
+        "Días de pago", default=30, help_text="Plazo habitual para pagarle.")
+    email = models.EmailField("Correo", blank=True)
+    telefono = models.CharField("Teléfono", max_length=20, blank=True)
+    banco = models.CharField("Datos de transferencia", max_length=200, blank=True,
+                             help_text="Banco, tipo y número de cuenta.")
+
+    class Meta:
+        ordering = ["razon_social"]
+        constraints = [models.UniqueConstraint(fields=["sociedad", "rut"], name="proveedor_rut_unico")]
+
+    def __str__(self):
+        return self.nombre_fantasia or self.razon_social
+
+
+TIPOS_COMPRA = {
+    30: "Factura", 32: "Factura no afecta o exenta", 33: "Factura electrónica",
+    34: "Factura exenta electrónica", 45: "Factura de compra", 46: "Factura de compra electrónica",
+    55: "Nota de débito", 56: "Nota de débito electrónica", 60: "Nota de crédito",
+    61: "Nota de crédito electrónica", 914: "Declaración de ingreso (DIN)",
+}
+
+
+class CompraQuerySet(models.QuerySet):
+    def con_saldo(self):
+        pagado = (PagoCompra.objects.filter(compra=OuterRef("pk")).values("compra")
+                  .annotate(s=Sum("monto")).values("s"))
+        return self.annotate(pagado_a=Coalesce(Subquery(pagado, output_field=BigIntegerField()), Value(0)))
+
+
+class Compra(models.Model):
+    ESTADOS_RCV = [("registro", "Registrada"), ("pendiente", "Pendiente"),
+                   ("no_incluir", "No incluir"), ("reclamado", "Reclamada"), ("manual", "Ingreso manual")]
+    sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="compras")
+    proveedor = models.ForeignKey(Proveedor, on_delete=models.PROTECT, related_name="compras")
+    tipo = models.PositiveSmallIntegerField(choices=sorted(TIPOS_COMPRA.items()))
+    folio = models.BigIntegerField()
+    fecha_emision = models.DateField("Fecha del documento")
+    fecha_recepcion = models.DateField("Recepción en el SII", null=True, blank=True)
+    periodo = models.CharField("Período tributario", max_length=7, help_text="AAAA-MM")
+    estado_rcv = models.CharField("Estado en el SII", max_length=10, choices=ESTADOS_RCV, default="registro")
+    tipo_compra = models.CharField(max_length=40, blank=True)
+    exento = models.BigIntegerField(default=0)
+    neto = models.BigIntegerField(default=0)
+    iva = models.BigIntegerField("IVA recuperable", default=0)
+    iva_no_recuperable = models.BigIntegerField(default=0)
+    otros_impuestos = models.BigIntegerField(default=0)
+    total = models.BigIntegerField(default=0)
+    categoria = models.ForeignKey(CategoriaGasto, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name="compras")
+    fecha_vencimiento = models.DateField("Vence", null=True, blank=True)
+    nota = models.CharField(max_length=200, blank=True)
+    origen = models.CharField(max_length=10, default="rcv", editable=False)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    objects = CompraQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-fecha_emision", "-id"]
+        constraints = [models.UniqueConstraint(fields=["sociedad", "proveedor", "tipo", "folio"],
+                                               name="compra_unica")]
+
+    def __str__(self):
+        return f"{self.tipo_corto} N° {self.folio}"
+
+    @property
+    def tipo_corto(self):
+        if self.es_nota_credito:
+            return "Nota de crédito"
+        if self.tipo in (55, 56):
+            return "Nota de débito"
+        if self.tipo == 914:
+            return "DIN"
+        return "Factura exenta" if self.tipo in (32, 34) else "Factura"
+
+    @property
+    def es_nota_credito(self):
+        return self.tipo in (60, 61)
+
+    @property
+    def signo(self):
+        return -1 if self.es_nota_credito else 1
+
+    @property
+    def gasto(self):
+        """Lo que pesa como gasto: neto + exento + IVA no recuperable (NC en negativo)."""
+        return self.signo * (self.neto + self.exento + self.iva_no_recuperable)
+
+    @property
+    def pagado(self):
+        valor = getattr(self, "pagado_a", None)
+        if valor is None:
+            valor = self.pagos.aggregate(s=Sum("monto"))["s"] or 0
+        return valor
+
+    @property
+    def saldo(self):
+        if self.es_nota_credito:
+            return 0
+        return max(self.total - self.pagado, 0)
+
+    @property
+    def estado_pago(self):
+        if self.es_nota_credito:
+            return "nc"
+        if self.saldo <= 0:
+            return "pagada"
+        if self.fecha_vencimiento and self.fecha_vencimiento < hoy():
+            return "vencida"
+        return "parcial" if self.pagado else "pendiente"
+
+
+class PagoCompra(models.Model):
+    compra = models.ForeignKey(Compra, on_delete=models.CASCADE, related_name="pagos")
+    fecha = models.DateField(default=hoy)
+    monto = models.BigIntegerField()
+    medio = models.CharField(max_length=15, choices=Pago.MEDIOS, default="transferencia")
+    nota = models.CharField("Referencia o nota", max_length=120, blank=True)
+
+    class Meta:
+        ordering = ["fecha", "id"]

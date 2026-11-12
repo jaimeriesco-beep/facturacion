@@ -85,6 +85,16 @@ def calcular(sociedad, vista):
         if i is not None:
             cobrado[i] += p.monto
 
+    from .models import Compra
+    gastos = [0] * n
+    por_categoria = defaultdict(int)
+    for c in Compra.objects.filter(sociedad=sociedad, fecha_emision__gte=desde).select_related("categoria"):
+        i = indice.get(_inicio_de(c.fecha_emision, vista))
+        if i is None:
+            continue
+        gastos[i] += c.gasto
+        por_categoria[str(c.categoria) if c.categoria_id else "Sin categoría"] += c.gasto
+
     etiquetas = [_etiqueta(d, vista) for d in inicios]
     clientes = sorted(((c, v) for c, v in por_cliente.items() if v > 0), key=lambda x: -x[1])
     top = clientes[:5]
@@ -96,10 +106,14 @@ def calcular(sociedad, vista):
         "docs_actual": documentos[-1],
         "promedio": round(sum(ventas[:-1]) / (n - 1)) if n > 1 else 0,
         "total_rango": sum(ventas), "cobrado_rango": sum(cobrado), "facturado_rango": sum(facturado),
+        "gastos_rango": sum(gastos), "margen_rango": sum(ventas) - sum(gastos),
+        "hay_compras": any(gastos) or Compra.objects.filter(sociedad=sociedad).exists(),
         "series": {
             "etiquetas": etiquetas,
             "rangos": [_rango_texto(d, vista) for d in inicios],
-            "ventas": ventas, "facturado": facturado, "cobrado": cobrado,
+            "ventas": ventas, "facturado": facturado, "cobrado": cobrado, "gastos": gastos,
+            "categorias": [{"nombre": n, "valor": v} for n, v in
+                           sorted(((n, v) for n, v in por_categoria.items() if v > 0), key=lambda x: -x[1])[:7]],
             "clientes": [{"nombre": c.nombre_fantasia or c.razon_social, "valor": v} for c, v in top]
                         + ([{"nombre": f"Otros ({len(clientes) - 5})", "valor": otros}] if otros else []),
         },

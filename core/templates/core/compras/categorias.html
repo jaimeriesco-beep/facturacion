@@ -1,0 +1,21 @@
+{% extends "core/base.html" %}
+{% block titulo %}Categorías de gasto{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'compras' %}">← Compras y gastos</a></p>
+<div class="titulo"><h1>Categorías de gasto</h1></div>
+<p class="suave" style="margin-top:-6px">Sirven para ver en qué se gasta. Puedes renombrarlas, desactivar las que no uses y crear otras.</p>
+<div class="panel">
+  {% for c in categorias %}
+  <form method="post" class="fila-form">{% csrf_token %}<input type="hidden" name="pk" value="{{ c.pk }}">
+    <input name="nombre" value="{{ c.nombre }}" maxlength="60" required aria-label="Nombre de la categoría" style="flex:1;max-width:360px">
+    <label class="casilla" style="margin:0"><input type="checkbox" name="activa" {% if c.activa %}checked{% endif %}> Activa</label>
+    <span class="suave" style="min-width:110px">{{ c.n }} compra{{ c.n|pluralize }}</span>
+    <button type="submit" class="chico">Guardar</button>
+  </form>
+  {% endfor %}
+  <form method="post" class="fila-form nueva">{% csrf_token %}
+    <input name="nombre" maxlength="60" required placeholder="Nueva categoría, ej.: Bandejas de cultivo" aria-label="Nueva categoría" style="flex:1;max-width:360px">
+    <button type="submit" class="chico">Agregar</button>
+  </form>
+</div>
+{% endblock %}

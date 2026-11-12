@@ -1,0 +1,37 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Importar compras del SII{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'compras' %}">← Compras y gastos</a></p>
+<div class="titulo"><h1>Importar compras desde el SII</h1></div>
+{% for r in resultados %}
+<div class="panel resultado-import{% if r.error %} con-error{% endif %}">
+  <strong>{{ r.archivo }}</strong>
+  {% if r.error %}<p class="error-texto">{{ r.error }}</p>
+  {% else %}
+  <p>{{ r.nuevas }} nueva{{ r.nuevas|pluralize }} · {{ r.actualizadas }} actualizada{{ r.actualizadas|pluralize }} · {{ r.sin_cambios }} sin cambios{% if r.proveedores_nuevos %} · {{ r.proveedores_nuevos }} proveedor{{ r.proveedores_nuevos|pluralize:"es" }} nuevo{{ r.proveedores_nuevos|pluralize }}{% endif %}{% if r.periodos %} · {{ r.periodos|join:", " }}{% endif %}</p>
+  {% if r.errores %}<details><summary>{{ r.errores|length }} fila{{ r.errores|length|pluralize }} con problemas</summary><ul>{% for e in r.errores %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+{% if resultados %}<p><a class="boton primario" href="{% url 'compras' %}">Ver las compras</a></p>{% endif %}
+<div class="dos">
+  <form method="post" enctype="multipart/form-data" class="panel">{% csrf_token %}
+    <h2>Subir archivos</h2>
+    <div class="campo"><label for="id_archivos">{{ form.archivos.label }}</label>{{ form.archivos }}{{ form.archivos.errors }}<p class="ayuda">Puedes subir varios a la vez (por ejemplo, varios meses, o «Registro» y «Pendientes»). Si subes un mes que ya estaba, se actualiza sin duplicar.</p></div>
+    <div class="campo"><label for="id_estado">{{ form.estado.label }}</label>{{ form.estado }}</div>
+    <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Importar</button></div>
+  </form>
+  <div class="panel pasos-sii">
+    <h2>Cómo descargarlo del SII</h2>
+    <ol>
+      <li>Entra a <strong>sii.cl</strong> → <em>Servicios online</em> → <em>Factura electrónica</em> → <em>Registro de compras y ventas</em>{% if rut_sin_dv %}, con el RUT de {{ sociedad_actual }}{% endif %}.</li>
+      <li>Elige el <strong>período</strong> (mes y año) y presiona <em>Consultar</em>.</li>
+      <li>En la pestaña <strong>Compras</strong>, presiona <em>Descargar detalles</em>. Se baja un archivo como <code>RCV_COMPRA_REGISTRO_{{ sociedad_actual.rut|default:"RUT" }}_AAAAMM.csv</code>.</li>
+      <li>Opcional: en la pestaña <strong>Pendientes</strong> descarga también esos detalles (facturas que aún no aceptas ni reclamas).</li>
+      <li>Sube los archivos aquí. La app reconoce el mes y el estado por el nombre del archivo.</li>
+    </ol>
+    <p class="ayuda">El SII exige verificación «no soy un robot» en esa consulta, por eso la descarga se hace a mano. Toma menos de un minuto por mes.</p>
+  </div>
+</div>
+{% endblock %}

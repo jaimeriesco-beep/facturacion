@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}{{ c }} · {{ c.proveedor }}{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'compras' %}?periodo={{ c.periodo }}">← Compras de {{ c.periodo }}</a></p>
+<div class="titulo">
+  <h1>{{ c.get_tipo_display }} N° {{ c.folio }}</h1>
+  <div class="acciones">{% if c.origen == 'manual' %}<form method="post" action="{% url 'compra_eliminar' c.pk %}" class="form-icono" onsubmit="return confirm('¿Eliminar esta compra registrada a mano?')">{% csrf_token %}<button class="boton-papelera" type="submit"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg>Eliminar</button></form>{% endif %}</div>
+</div>
+<div class="perfil-grid">
+  <div>
+    <div class="panel">
+      <dl class="ficha">
+        <div><dt>Proveedor</dt><dd><a href="{% url 'proveedor' c.proveedor_id %}">{{ c.proveedor.razon_social }}</a><br><span class="suave">{{ c.proveedor.rut|rut }}</span></dd></div>
+        <div><dt>Fecha del documento</dt><dd>{{ c.fecha_emision|date:"d/m/Y" }}</dd></div>
+        <div><dt>Período tributario</dt><dd>{{ c.periodo }}</dd></div>
+        <div><dt>Estado en el SII</dt><dd>{{ c.get_estado_rcv_display }}{% if c.fecha_recepcion %}<br><span class="suave">Recibida el {{ c.fecha_recepcion|date:"d/m/Y" }}</span>{% endif %}</dd></div>
+      </dl>
+      <table class="totales" style="margin-top:12px">
+        {% if c.exento %}<tr><td>Exento</td><td class="num">{{ c.exento|clp }}</td></tr>{% endif %}
+        <tr><td>Neto</td><td class="num">{{ c.neto|clp }}</td></tr>
+        <tr><td>IVA recuperable</td><td class="num">{{ c.iva|clp }}</td></tr>
+        {% if c.iva_no_recuperable %}<tr><td>IVA no recuperable</td><td class="num">{{ c.iva_no_recuperable|clp }}</td></tr>{% endif %}
+        {% if c.otros_impuestos %}<tr><td>Otros impuestos</td><td class="num">{{ c.otros_impuestos|clp }}</td></tr>{% endif %}
+        <tr class="total"><td>Total</td><td class="num">{% if c.es_nota_credito %}-{% endif %}{{ c.total|clp }}</td></tr>
+      </table>
+    </div>
+    {% if not c.es_nota_credito %}
+    <div class="panel">
+      <h2>Pagos</h2>
+      {% if pagos %}<table><thead><tr><th>Fecha</th><th>Medio</th><th>Referencia</th><th class="num">Monto</th><th></th></tr></thead><tbody>
+      {% for p in pagos %}<tr><td>{{ p.fecha|date:"d/m/Y" }}</td><td>{{ p.get_medio_display }}</td><td>{{ p.nota }}</td><td class="num">{{ p.monto|clp }}</td><td class="c-accion"><form method="post" action="{% url 'compra_pago_eliminar' p.pk %}" class="form-icono" onsubmit="return confirm('¿Eliminar este pago?')">{% csrf_token %}<button type="submit" class="icono-accion basurero" aria-label="Eliminar pago"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button></form></td></tr>{% endfor %}
+      </tbody></table>{% else %}<p class="suave">Sin pagos registrados.</p>{% endif %}
+      <p><strong>Saldo: {{ c.saldo|clp }}</strong>{% if c.fecha_vencimiento %} · vence el {{ c.fecha_vencimiento|date:"d/m/Y" }}{% endif %}</p>
+      {% if c.saldo %}
+      <form method="post" class="fila-form" style="padding:0">{% csrf_token %}<input type="hidden" name="accion" value="pago">
+        <input name="monto" value="{{ c.saldo }}" inputmode="numeric" aria-label="Monto" style="max-width:140px">
+        <input type="date" name="fecha" value="{{ hoy|date:'Y-m-d' }}" max="{{ hoy|date:'Y-m-d' }}" aria-label="Fecha">
+        <select name="medio" aria-label="Medio">{% for v, n in medios %}<option value="{{ v }}">{{ n }}</option>{% endfor %}</select>
+        <input name="nota" placeholder="Referencia" maxlength="120" aria-label="Referencia" style="max-width:180px">
+        <button type="submit" class="primario">Registrar pago</button>
+      </form>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <aside>
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="datos">
+      <h2>Clasificación</h2>
+      {% for campo in form %}<div class="campo" style="margin-bottom:12px"><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</div>{% endfor %}
+      <label class="casilla"><input type="checkbox" name="recordar"> Usar esta categoría para las próximas compras de {{ c.proveedor }}</label>
+      <div class="acciones" style="margin-top:12px"><button class="primario" type="submit">Guardar</button></div>
+    </form>
+    {% if otras %}<div class="panel"><h2>Otras de este proveedor</h2><ul class="lista-simple">{% for o in otras %}<li><a href="{% url 'compra' o.pk %}">{{ o }}</a> <span class="suave">· {{ o.fecha_emision|date:"d/m/Y" }} · {% if o.es_nota_credito %}-{% endif %}{{ o.total|clp }}</span></li>{% endfor %}</ul></div>{% endif %}
+  </aside>
+</div>
+{% endblock %}

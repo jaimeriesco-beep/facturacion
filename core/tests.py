@@ -1405,3 +1405,78 @@ class RolesTests(Base):
             "username": "jaime", "rol": "basica", "is_active": "on"})
         self.user.refresh_from_db()
         self.assertTrue(self.user.is_superuser)
+
+
+RCV_EJEMPLO = (
+    "Nro;Tipo Doc;Tipo Compra;RUT Proveedor;Razon Social;Folio;Fecha Docto;Fecha Recepcion;Fecha Acuse;"
+    "Monto Exento;Monto Neto;Monto IVA Recuperable;Monto Iva No Recuperable;Codigo IVA No Rec.;Monto Total;"
+    "Monto Neto Activo Fijo;IVA Activo Fijo;IVA uso Comun;Impto. Sin Derecho a Credito;IVA No Retenido;"
+    "Tabacos Puros;Tabacos Cigarrillos;Tabacos Elaborados;NCE o NDE sobre Fact. de Compra;"
+    "Codigo Otro Impuesto;Valor Otro Impuesto;Tasa Otro Impuesto\n"
+    "1;33;Del Giro;76192083-9;SEMILLAS DEL SUR SPA;1234;05/11/2026;06/11/2026 10:11:12;;0;100000;19000;0;;119000;0;0;0;0;0;0;0;0;0;;;\n"
+    "2;34;Del Giro;76086428-5;AGUAS ANDINAS S.A.;88;10/11/2026;10/11/2026 08:00:00;;25000;0;0;0;;25000;0;0;0;0;0;0;0;0;0;;;\n"
+    "3;61;Del Giro;76192083-9;SEMILLAS DEL SUR SPA;45;12/11/2026;12/11/2026 09:00:00;;0;10000;1900;0;;11900;0;0;0;0;0;0;0;0;0;;;\n"
+    "4;33;Del Giro;11111111-2;RUT MALO;9;12/11/2026;;;0;1000;190;0;;1190;0;0;0;0;0;0;0;0;0;;;\n"
+).encode("cp1252")
+
+
+class ComprasTests(Base):
+    def importar(self, contenido=RCV_EJEMPLO, nombre="RCV_COMPRA_REGISTRO_77552628-9_202611.csv"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("compras_importar"), {
+            "archivos": [SimpleUploadedFile(nombre, contenido, content_type="text/csv")], "estado": ""})
+
+    def test_importa_rcv_y_no_duplica(self):
+        from .models import Compra, Proveedor
+        r = self.importar()
+        self.assertContains(r, "3 nuevas")
+        self.assertContains(r, "Línea 5: RUT")
+        self.assertEqual(Compra.objects.count(), 3)
+        self.assertEqual(Proveedor.objects.count(), 2)
+        f = Compra.objects.get(folio=1234)
+        self.assertEqual((f.neto, f.iva, f.total, f.periodo, f.estado_rcv), (100000, 19000, 119000, "2026-11", "registro"))
+        self.assertEqual(f.fecha_vencimiento, date(2026, 12, 5))
+        nc = Compra.objects.get(folio=45)
+        self.assertEqual((nc.gasto, nc.saldo), (-10000, 0))
+        r = self.importar()
+        self.assertContains(r, "0 nuevas")
+        self.assertEqual(Compra.objects.count(), 3)
+        lista = self.client.get(reverse("compras"))
+        self.assertEqual(lista.context["gasto"], 100000 + 25000 - 10000)
+        self.assertEqual(lista.context["iva"], 19000 - 1900)
+
+    def test_archivo_que_no_es_rcv(self):
+        r = self.importar(b"a;b;c\n1;2;3\n", "otro.csv")
+        self.assertContains(r, "no parece un detalle de compras")
+
+    def test_categorizar_recordar_y_pagar_varias(self):
+        from .models import CategoriaGasto, Compra, PagoCompra
+        self.importar()
+        semillas = CategoriaGasto.objects.get(sociedad=self.soc, nombre="Semillas y plantines")
+        f = Compra.objects.get(folio=1234)
+        agua = Compra.objects.get(folio=88)
+        self.client.post(reverse("compras_accion"), {"accion": "categoria", "compras": [f.pk],
+                                                     "categoria": semillas.pk, "recordar": "on"})
+        f.refresh_from_db()
+        self.assertEqual(f.categoria, semillas)
+        self.assertEqual(f.proveedor.categoria, semillas)
+        self.client.post(reverse("compras_accion"), {"accion": "pagar", "compras": [f.pk, agua.pk],
+                                                     "fecha": "2026-11-11", "medio": "transferencia"})
+        self.assertEqual(PagoCompra.objects.count(), 2)
+        self.assertEqual(Compra.objects.con_saldo().get(pk=f.pk).saldo, 0)
+        r = self.client.get(reverse("inicio"))
+        self.assertContains(r, "Ventas y gastos")
+
+    def test_compra_manual_y_pago_parcial(self):
+        from .models import Compra
+        r = self.client.post(reverse("compra_nueva"), {
+            "rut_proveedor": "76.192.083-9", "razon_social": "Ferretería Uno", "tipo": 33, "folio": 77,
+            "fecha_emision": "2026-11-03", "neto": 50000, "iva": 9500, "total": "", "exento": ""})
+        c = Compra.objects.get(folio=77)
+        self.assertRedirects(r, reverse("compra", args=[c.pk]))
+        self.assertEqual((c.total, c.origen, c.periodo), (59500, "manual", "2026-11"))
+        self.client.post(reverse("compra", args=[c.pk]), {"accion": "pago", "monto": "20.000",
+                                                          "fecha": "2026-11-05", "medio": "cheque"})
+        self.assertEqual(Compra.objects.con_saldo().get(pk=c.pk).saldo, 39500)
+        self.client.post(reverse("compra_eliminar", args=[c.pk]))
+        self.assertFalse(Compra.objects.filter(pk=c.pk).exists())

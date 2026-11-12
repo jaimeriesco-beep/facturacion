@@ -52,13 +52,19 @@
     <div id="g-antiguedad" class="grafico"></div>
   </div>
   <div class="panel">
-    <div class="grafico-cabeza"><div><h2>Gastos</h2><p class="suave">Compras y gastos por período</p></div></div>
-    <div class="pronto-panel">
-      <p>Este gráfico se activará cuando incorporemos el módulo de <strong>Compras</strong>, con las facturas de proveedores traídas desde el SII.</p>
-      <p class="suave">Ahí también podremos mostrar el margen: ventas menos gastos.</p>
-    </div>
+    <div class="grafico-cabeza"><div><h2>En qué se gasta</h2><p class="suave">Compras netas por categoría · {{ rango|lower }}</p></div><a href="{% url 'compras' %}">Ver compras</a></div>
+    {% if hay_compras %}<div id="g-categorias" class="grafico"></div>
+    {% else %}<div class="pronto-panel"><p>Importa las compras desde el SII para ver tus gastos y el margen.</p><a class="boton" href="{% url 'compras_importar' %}">Importar compras</a></div>{% endif %}
   </div>
 </div>
+
+{% if hay_compras %}
+<div class="panel">
+  <div class="grafico-cabeza"><div><h2>Ventas y gastos</h2><p class="suave">Sin IVA · gastos {{ gastos_rango|clp }} · margen {{ margen_rango|clp }}</p></div>
+    <div class="leyenda"><span><i style="background:#2f8a55"></i>Ventas netas</span><span><i style="background:#c2410c"></i>Gastos</span></div></div>
+  <div id="g-gastos" class="grafico"></div>
+</div>
+{% endif %}
 
 {% if por_reponer %}
 <div class="aviso">{{ por_reponer|length }} producto{{ por_reponer|length|pluralize }} por reponer: {% for f in por_reponer|slice:":5" %}<a href="{% url 'inventario_kardex' f.producto.pk %}">{{ f.producto }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}{% if por_reponer|length > 5 %} y {{ por_reponer|length|add:"-5" }} más{% endif %}. <a href="{% url 'inventario_stock' %}?estado=reponer">Ver stock</a></div>

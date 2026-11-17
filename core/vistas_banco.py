@@ -131,7 +131,7 @@ class ImportarCartolaForm(forms.Form):
     def __init__(self, *args, sociedad, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["cuenta"].queryset = sociedad.cuentas.all()
-        self.fields["archivos"].widget.attrs["accept"] = ".xls,.xlsx,.csv,.txt"
+        self.fields["archivos"].widget.attrs["accept"] = ".xls,.xlsx,.csv,.txt,.pdf"
 
 
 @con_sociedad

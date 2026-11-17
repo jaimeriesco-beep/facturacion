@@ -171,7 +171,7 @@ def leer(contenido, nombre=""):
     elif contenido[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # .xls binario antiguo
         lineas, filas = _filas_xls(contenido)
     elif contenido[:5] == b"%PDF-":
-        raise ErrorCartola("Los PDF no se pueden leer con precisión. Descarga la cartola en formato Excel o TXT.")
+        return leer_pdf(contenido)
     else:
         lineas, filas = _filas_texto(contenido)
     datos = {"titular": "", "rut": "", "cuenta": "", "banco": "", "movimientos": []}
@@ -244,6 +244,122 @@ def leer(contenido, nombre=""):
     return datos
 
 
+# ------------------------------------------------------------ Cartolas en PDF
+
+_RE_FECHA = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+_RE_MONTO = re.compile(r"^-?[\d.]+(,\d+)?$")
+
+
+def leer_pdf(contenido):
+    """Cartola histórica en PDF de Santander (Office Banking / Banca Privada).
+
+    Es un PDF con texto real y columnas fijas: FECHA, CARGO, ABONO, DESCRIPCIÓN (en una o
+    varias líneas, centradas en torno a la fecha), SALDO, N° DOC y SUCURSAL. En ese PDF la
+    columna SALDO trae el saldo ANTERIOR al movimiento, así que los saldos se recalculan
+    desde el «Saldo inicial» y se comprueba que lleguen al «Saldo final».
+    """
+    try:
+        import pdfplumber
+        pdf = pdfplumber.open(io.BytesIO(contenido))
+    except Exception:
+        raise ErrorCartola("No pude abrir el PDF.")
+    texto = "\n".join((p.extract_text() or "") for p in pdf.pages)
+    if not texto.strip():
+        raise ErrorCartola("El PDF no tiene texto (parece escaneado). Descarga la cartola en Excel o en el PDF del banco.")
+    buscar = lambda patron: (re.search(patron, texto, re.I | re.M) or [None, ""])[1]  # noqa: E731
+    inicial, final = buscar(r"Saldo inicial:\s*\$\s*([\d.]+)"), buscar(r"Saldo final:\s*\$\s*([\d.]+)")
+    if not inicial or "FECHA" not in texto.upper():
+        raise ErrorCartola("Este PDF no tiene el formato de cartola que la app reconoce (Santander). "
+                           "Descarga la cartola en Excel o TXT, o mándame un ejemplo para agregar el formato.")
+    datos = {"titular": (buscar(r"Empresa:\s*(.+?)\s*(?:RUT empresa|$)") or "").strip(),
+             "rut": "", "cuenta": "", "banco": "Banco Santander", "movimientos": [],
+             "saldo_inicial": _monto(inicial), "saldo_final": _monto(final) if final else None}
+    if r := re.search(r"RUT empresa:\s*([\d.]+)-([\dkK])", texto, re.I):
+        datos["rut"] = f"{int(r.group(1).replace('.', ''))}-{r.group(2).upper()}"
+    if c := buscar(r"Cuenta:\s*([\d-]{6,})"):
+        datos["cuenta"] = c.replace("-", "").lstrip("0") or c
+
+    secciones = {"detalle": [], "comisiones": []}
+    for pagina in pdf.pages:
+        palabras = pagina.extract_words()
+        # Límites verticales de cada sección según sus títulos.
+        marcas = []
+        for i, w in enumerate(palabras):
+            siguiente = palabras[i + 1]["text"].lower() if i + 1 < len(palabras) else ""
+            t = w["text"].lower()
+            if t == "detalle" and siguiente.startswith("movimiento"):
+                marcas.append(("detalle", w["top"]))
+            elif t == "resumen" and siguiente.startswith("comision"):
+                marcas.append(("comisiones", w["top"]))
+            elif (t == "saldos" and siguiente.startswith("diario")) or t == "nota:":
+                marcas.append(("fin", w["top"]))
+        encabezados = [w for w in palabras if w["text"] == "FECHA"]
+        for enc in encabezados:
+            seccion = None
+            for nombre, top in marcas:
+                if top < enc["top"]:
+                    seccion = nombre
+            if seccion not in secciones:
+                continue
+            limite = min([top for _, top in marcas if top > enc["top"]] + [pagina.height])
+            fila_enc = [w for w in palabras if abs(w["top"] - enc["top"]) < 3]
+            col = {w["text"].upper(): w for w in fila_enc}
+            if not {"CARGO", "ABONO", "SALDO"} <= set(col):
+                continue
+            x_desc = next((w["x0"] for w in fila_enc if w["text"].upper().startswith("DESCRIP")), None)
+            x_doc = next((w["x0"] for w in fila_enc if w["text"].upper() == "N°"), col["SALDO"]["x1"] + 5)
+            x_suc = next((w["x0"] for w in fila_enc if w["text"].upper().startswith("SUCURSAL")), x_doc + 40)
+            cuerpo = [w for w in palabras if enc["top"] + 3 < w["top"] < limite - 1]
+            anclas = [w for w in cuerpo if _RE_FECHA.match(w["text"]) and w["x0"] < col["CARGO"]["x0"]]
+            filas = [{"fecha": _fecha(a["text"]), "top": a["top"], "cargo": 0, "abono": 0,
+                      "desc": [], "doc": [], "suc": []} for a in anclas]
+            if not filas:
+                continue
+
+            def cercana(w):
+                return min(filas, key=lambda f: abs(f["top"] - w["top"]))
+            for w in cuerpo:
+                if w in anclas or w["text"] == "$":
+                    continue
+                x0, x1 = w["x0"], w["x1"]
+                if _RE_MONTO.match(w["text"]) and x0 < (x_desc or col["ABONO"]["x1"] + 5):
+                    destino = "cargo" if abs(x1 - col["CARGO"]["x1"]) < abs(x1 - col["ABONO"]["x1"]) else "abono"
+                    cercana(w)[destino] = _monto(w["text"])
+                elif x_desc and x_desc - 4 <= x0 < col["SALDO"]["x0"] - 15:
+                    cercana(w)["desc"].append(w)
+                elif x_doc - 4 <= x0 < x_suc - 4:
+                    cercana(w)["doc"].append(w)
+                elif x0 >= x_suc - 4:
+                    cercana(w)["suc"].append(w)
+            for f in filas:
+                unir = lambda ws: " ".join(w["text"] for w in sorted(ws, key=lambda w: (round(w["top"]), w["x0"])))  # noqa: E731
+                monto = f["abono"] - f["cargo"]
+                if monto:
+                    secciones[seccion].append({"fecha": f["fecha"], "monto": monto,
+                                               "descripcion": unir(f["desc"])[:200] or "(sin descripción)",
+                                               "documento": unir(f["doc"]).lstrip("0")[:30],
+                                               "sucursal": unir(f["suc"])[:40]})
+    movimientos = secciones["detalle"]
+    if datos["saldo_final"] is not None:
+        suma = datos["saldo_inicial"] + sum(m["monto"] for m in movimientos)
+        con_comisiones = suma + sum(m["monto"] for m in secciones["comisiones"])
+        if suma != datos["saldo_final"] and con_comisiones == datos["saldo_final"]:
+            movimientos = movimientos + secciones["comisiones"]
+    movimientos.sort(key=lambda m: m["fecha"])
+    if not movimientos:
+        raise ErrorCartola("La cartola no tiene movimientos.")
+    saldo = datos["saldo_inicial"]
+    vistos = {}
+    for orden, m in enumerate(movimientos, start=1):
+        saldo += m["monto"]
+        m.update(orden=orden, saldo=saldo)
+        clave = (m["fecha"], m["descripcion"].lower(), m["monto"], m["documento"])
+        vistos[clave] = vistos.get(clave, 0) + 1
+        m["huella"] = hashlib.sha256(repr(clave + (vistos[clave],)).encode()).hexdigest()
+    datos["movimientos"] = movimientos
+    return datos
+
+
 def aplicar_reglas(sociedad, movimientos):
     reglas = list(sociedad.reglas_banco.select_related("categoria"))
     n = 0
@@ -285,6 +401,9 @@ def importar(sociedad, contenido, nombre="", cuenta=None, aceptar_otro_rut=False
         if saldo is not None and saldo + m["monto"] != m["saldo"]:
             descuadres += 1
         saldo = m["saldo"]
+    if datos.get("saldo_final") is not None and datos["movimientos"]:
+        if datos["movimientos"][-1]["saldo"] != datos["saldo_final"]:
+            descuadres += 1        # el PDF no llega al saldo final que informa el banco
     return {"descuadres": descuadres,"cuenta": cuenta, "nuevos": len(nuevos), "repetidos": len(datos["movimientos"]) - len(nuevos),
             "categorizados": reglas, "desde": min(fechas), "hasta": max(fechas)}
 

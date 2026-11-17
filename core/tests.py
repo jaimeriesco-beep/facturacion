@@ -1569,7 +1569,7 @@ class BancoTests(Base):
         self.assertTrue(self.soc.reglas_banco.filter(texto="COMISION").exists())
 
     def test_rechaza_pdf(self):
-        self.assertContains(self.subir(b"%PDF-1.4 ..."), "Los PDF no se pueden leer")
+        self.assertContains(self.subir(b"%PDF-1.4 ..."), "No pude abrir el PDF")
 
 
 class CartolaSantanderTests(Base):
@@ -1610,3 +1610,87 @@ class CartolaSantanderTests(Base):
                                                           "numero": "0-000-7123456-7", "alias": "Santander CC"})
         c = CuentaBancaria.objects.get()
         self.assertEqual((c.banco, c.numero, str(c)), ("Banco Santander", "71234567", "Santander CC"))
+
+
+def pdf_cartola_santander(movimientos, inicial, final, comisiones=()):
+    """PDF con la misma estructura que la cartola histórica de Santander (datos inventados)."""
+    import io
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    salida = io.BytesIO()
+    c = canvas.Canvas(salida, pagesize=letter)
+    alto = letter[1]
+    t = lambda x, y, s: c.drawString(x, alto - y, s)  # noqa: E731
+    d = lambda x1, y, s: c.drawRightString(x1, alto - y, s)  # noqa: E731
+    c.setFont("Helvetica", 8)
+    t(30, 40, "Cartolas históricas de Cta.Cte y Líneas de Crédito.")
+    t(30, 60, "Empresa: VERDE VERTICAL SPA")
+    t(330, 60, "RUT empresa: 77.552.628-9")
+    t(30, 90, "Cuenta: 0-000-1234567-8 Moneda: PESOS DE CHILE")
+    t(30, 120, f"Saldo inicial: $ {inicial:,}".replace(",", "."))
+    t(330, 120, f"Saldo final: $ {final:,}".replace(",", "."))
+
+    def tabla(y, titulo, filas):
+        t(30, y, titulo)
+        y += 20
+        for x, s in ((32, "FECHA"), (134, "CARGO"), (201, "ABONO"), (243, "DESCRIPCIÓN"), (401, "SALDO"),
+                     (441, "N°"), (452, "DOC"), (492, "SUCURSAL")):
+            t(x, y, s)
+        for fecha, monto, desc in filas:
+            y += 22
+            t(32, y, fecha)
+            d(164 if monto < 0 else 231, y, f"$ {abs(monto):,}".replace(",", "."))
+            partes = desc.split("|")
+            if len(partes) == 2:
+                t(243, y - 4, partes[0])
+                t(243, y + 4, partes[1])
+            else:
+                t(243, y, desc)
+            d(429, y, "$ 1.000")
+            t(459, y, "0")
+            t(492, y, "Internet")
+        return y + 30
+    y = tabla(160, "Detalle movimientos", movimientos)
+    y = tabla(y, "Resumen comisiones", comisiones)
+    t(30, y, "Saldos diarios")
+    c.save()
+    return salida.getvalue()
+
+
+class CartolaPDFTests(Base):
+    def subir(self, contenido):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("banco_importar"), {
+            "archivos": [SimpleUploadedFile("cartola.pdf", contenido, content_type="application/pdf")]})
+
+    def test_pdf_santander_descripcion_en_dos_lineas_y_saldos(self):
+        from .models import CuentaBancaria, MovimientoBancario
+        pdf = pdf_cartola_santander([("04/11/2026", 119000, "TRANSF DE|CLIENTE UNO SPA"),
+                                     ("10/11/2026", -50000, "PAGO TESORERIA")], 100000, 169000)
+        r = self.subir(pdf)
+        self.assertContains(r, "2 movimientos nuevos")
+        self.assertContains(r, "Los saldos de la cartola cuadran")
+        cuenta = CuentaBancaria.objects.get()
+        self.assertEqual((cuenta.banco, cuenta.numero), ("Banco Santander", "12345678"))
+        movs = list(MovimientoBancario.objects.order_by("fecha").values_list("descripcion", "monto", "saldo"))
+        self.assertEqual(movs, [("TRANSF DE CLIENTE UNO SPA", 119000, 219000), ("PAGO TESORERIA", -50000, 169000)])
+        self.assertContains(self.subir(pdf), "2 ya estaban")
+
+    def test_pdf_incluye_comisiones_solo_si_cuadra(self):
+        from .banco import leer
+        pdf = pdf_cartola_santander([("04/11/2026", 10000, "ABONO")], 0, 7000,
+                                    comisiones=[("30/11/2026", -3000, "COMISION MANTENCION")])
+        movs = leer(pdf)["movimientos"]
+        self.assertEqual([m["monto"] for m in movs], [10000, -3000])
+        pdf = pdf_cartola_santander([("04/11/2026", 10000, "ABONO"), ("30/11/2026", -3000, "COMISION MANTENCION")],
+                                    0, 7000, comisiones=[("30/11/2026", -3000, "COMISION MANTENCION")])
+        self.assertEqual([m["monto"] for m in leer(pdf)["movimientos"]], [10000, -3000])
+
+    def test_pdf_que_no_es_cartola(self):
+        import io
+        from reportlab.pdfgen import canvas
+        salida = io.BytesIO()
+        c = canvas.Canvas(salida)
+        c.drawString(50, 700, "Factura de venta")
+        c.save()
+        self.assertContains(self.subir(salida.getvalue()), "no tiene el formato de cartola")

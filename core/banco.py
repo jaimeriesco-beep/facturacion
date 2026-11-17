@@ -266,6 +266,8 @@ def leer_pdf(contenido):
     texto = "\n".join((p.extract_text() or "") for p in pdf.pages)
     if not texto.strip():
         raise ErrorCartola("El PDF no tiene texto (parece escaneado). Descarga la cartola en Excel o en el PDF del banco.")
+    if re.search(r"Consulta de movimientos", texto, re.I):
+        return _leer_pdf_ultimos(pdf, texto)
     buscar = lambda patron: (re.search(patron, texto, re.I | re.M) or [None, ""])[1]  # noqa: E731
     inicial, final = buscar(r"Saldo inicial:\s*\$\s*([\d.]+)"), buscar(r"Saldo final:\s*\$\s*([\d.]+)")
     if not inicial or "FECHA" not in texto.upper():
@@ -360,6 +362,88 @@ def leer_pdf(contenido):
     return datos
 
 
+def _leer_pdf_ultimos(pdf, texto):
+    """«Consulta de movimientos de Cuentas Corrientes» de Santander (últimos movimientos).
+
+    Columnas: MONTO (con signo), DESCRIPCIÓN (varias líneas en torno a la fila), FECHA, SALDO
+    (posterior al movimiento), N° DOCUMENTO, SUCURSAL y N° MOVIMIENTO. Viene del más reciente al
+    más antiguo y el banco la marca como información provisoria.
+    """
+    buscar = lambda patron: (re.search(patron, texto, re.I | re.M) or [None, ""])[1]  # noqa: E731
+    datos = {"titular": (buscar(r"Empresa:\s*(.+?)\s*(?:RUT empresa|$)") or "").strip(),
+             "rut": "", "cuenta": "", "banco": "Banco Santander", "movimientos": [], "provisorio": True}
+    if r := re.search(r"RUT empresa:\s*([\d.]+)-([\dkK])", texto, re.I):
+        datos["rut"] = f"{int(r.group(1).replace('.', ''))}-{r.group(2).upper()}"
+    if c := re.search(r"Corriente\s*N°?\s*:?\s*([\d-]{6,})", texto.replace("C uenta", "Cuenta"), re.I):
+        datos["cuenta"] = c.group(1).replace("-", "").lstrip("0")
+    filas = []
+    for pagina in pdf.pages:
+        palabras = pagina.extract_words()
+        enc = next((w for w in palabras if w["text"].upper() == "MONTO"), None)
+        if enc is None:
+            continue
+        fila_enc = [w for w in palabras if abs(w["top"] - enc["top"]) < 3]
+        x = {}
+        for w in fila_enc:
+            t = w["text"].upper()
+            if t.startswith("DESCRIP"):
+                x.setdefault("desc", w["x0"])
+            elif t in ("FECHA", "SALDO", "SUCURSAL"):
+                x.setdefault(t.lower(), w["x0"])
+            elif t == "N°":
+                x["doc" if "doc" not in x else "nmov"] = w["x0"]
+        if not {"desc", "fecha", "saldo"} <= set(x):
+            continue
+        x.setdefault("doc", x["saldo"] + 80)
+        x.setdefault("sucursal", x["doc"] + 60)
+        x.setdefault("nmov", x["sucursal"] + 70)
+        fin = min([w["top"] for w in palabras if w["text"].lower() == "nota:"] + [pagina.height])
+        cuerpo = [w for w in palabras if enc["top"] + 3 < w["top"] < fin - 1]
+        anclas = [w for w in cuerpo if _RE_FECHA.match(w["text"]) and x["fecha"] - 6 <= w["x0"] < x["saldo"] - 4]
+        propias = [{"fecha": _fecha(a["text"]), "top": a["top"], "monto": None, "saldo": None,
+                    "desc": [], "doc": [], "suc": [], "nmov": ""} for a in anclas]
+        if not propias:
+            continue
+        cercana = lambda w: min(propias, key=lambda f: abs(f["top"] - w["top"]))  # noqa: E731
+        for w in cuerpo:
+            if w in anclas or w["text"] == "$":
+                continue
+            x0, t = w["x0"], w["text"]
+            if x0 < x["desc"] - 4 or x["saldo"] - 4 <= x0 < x["doc"] - 4:
+                t = t.replace("$", "")            # «$-348.432» cuando el signo va pegado
+            if x0 < x["desc"] - 4:
+                if _RE_MONTO.match(t.lstrip("-")):
+                    cercana(w)["monto"] = _monto(t)
+            elif x0 < x["fecha"] - 6:
+                cercana(w)["desc"].append(w)
+            elif x["saldo"] - 4 <= x0 < x["doc"] - 4:
+                if _RE_MONTO.match(t.lstrip("-")):
+                    cercana(w)["saldo"] = _monto(t)
+            elif x0 < x["sucursal"] - 4:
+                cercana(w)["doc"].append(w)
+            elif x0 < x["nmov"] - 4:
+                cercana(w)["suc"].append(w)
+            else:
+                cercana(w)["nmov"] = t
+        filas.extend(f for f in propias if f["monto"])
+    if not filas:
+        raise ErrorCartola("La consulta de movimientos no tiene movimientos.")
+    unir = lambda ws: " ".join(w["text"] for w in sorted(ws, key=lambda w: (round(w["top"]), w["x0"])))  # noqa: E731
+    # Del más antiguo al más reciente: por fecha y luego por N° de movimiento (o al revés del PDF).
+    filas = list(reversed(filas))
+    filas.sort(key=lambda f: (f["fecha"], int(f["nmov"]) if f["nmov"].isdigit() else 0))
+    vistos = {}
+    for orden, f in enumerate(filas, start=1):
+        m = {"fecha": f["fecha"], "monto": f["monto"], "saldo": f["saldo"], "orden": orden,
+             "descripcion": unir(f["desc"])[:200] or "(sin descripción)",
+             "documento": unir(f["doc"]).lstrip("0")[:30], "sucursal": unir(f["suc"])[:40]}
+        clave = (m["fecha"], m["descripcion"].lower(), m["monto"], m["documento"])
+        vistos[clave] = vistos.get(clave, 0) + 1
+        m["huella"] = hashlib.sha256(repr(clave + (vistos[clave],)).encode()).hexdigest()
+        datos["movimientos"].append(m)
+    return datos
+
+
 def aplicar_reglas(sociedad, movimientos, reglas=None):
     """Categoriza los movimientos SIN categoría ni conciliación con la primera regla que coincide
     (las reglas se revisan por prioridad). Devuelve cuántos categorizó."""
@@ -437,7 +521,30 @@ def importar(sociedad, contenido, nombre="", cuenta=None, aceptar_otro_rut=False
             sociedad=sociedad, banco=datos["banco"] or "Otro", numero=datos["cuenta"])
     categorias_banco_de(sociedad)
     existentes = set(cuenta.movimientos.values_list("huella", flat=True))
-    nuevos = [MovimientoBancario(cuenta=cuenta, **m) for m in datos["movimientos"] if m["huella"] not in existentes]
+    provisorio = bool(datos.get("provisorio"))
+    candidatos = [m for m in datos["movimientos"] if m["huella"] not in existentes]
+    # La consulta de «últimos movimientos» y la cartola definitiva describen distinto el mismo
+    # movimiento: se reconocen por fecha y monto para no duplicarlos.
+    desde = min((m["fecha"] for m in candidatos), default=None)
+    previos = {}
+    if desde:
+        for e in cuenta.movimientos.filter(fecha__gte=desde).exclude(huella__in=[m["huella"] for m in candidatos]):
+            if provisorio or e.provisorio:
+                previos.setdefault((e.fecha, e.monto), []).append(e)
+    nuevos, confirmados = [], 0
+    for m in candidatos:
+        pares = previos.get((m["fecha"], m["monto"]))
+        if pares:
+            previo = pares.pop(0)
+            if not provisorio:          # la cartola definitiva reemplaza los datos provisorios
+                for campo in ("descripcion", "saldo", "orden", "documento", "sucursal", "huella"):
+                    setattr(previo, campo, m[campo])
+                previo.provisorio = False
+                previo.save(update_fields=["descripcion", "saldo", "orden", "documento", "sucursal", "huella",
+                                           "provisorio"])
+                confirmados += 1
+            continue
+        nuevos.append(MovimientoBancario(cuenta=cuenta, provisorio=provisorio, **m))
     MovimientoBancario.objects.bulk_create(nuevos)
     creados = list(cuenta.movimientos.filter(huella__in=[m.huella for m in nuevos]))
     reglas = aplicar_reglas(sociedad, creados)
@@ -453,7 +560,8 @@ def importar(sociedad, contenido, nombre="", cuenta=None, aceptar_otro_rut=False
     if datos.get("saldo_final") is not None and datos["movimientos"]:
         if datos["movimientos"][-1]["saldo"] != datos["saldo_final"]:
             descuadres += 1        # el PDF no llega al saldo final que informa el banco
-    return {"descuadres": descuadres,"cuenta": cuenta, "nuevos": len(nuevos), "repetidos": len(datos["movimientos"]) - len(nuevos),
+    return {"descuadres": descuadres, "cuenta": cuenta, "nuevos": len(nuevos), "confirmados": confirmados,
+            "provisorio": provisorio, "repetidos": len(datos["movimientos"]) - len(nuevos) - confirmados,
             "categorizados": reglas, "desde": min(fechas), "hasta": max(fechas)}
 
 

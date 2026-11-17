@@ -1911,6 +1911,91 @@ def pdf_cartola_santander(movimientos, inicial, final, comisiones=()):
     return salida.getvalue()
 
 
+def pdf_ultimos_santander(filas, cuenta="0-000-1234567-8"):
+    """PDF con la estructura de la «Consulta de movimientos» de Santander (datos inventados).
+    filas: (fecha, monto, saldo, descripción con | para segunda línea, n° movimiento), del más reciente al más antiguo."""
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    salida = io.BytesIO()
+    c = canvas.Canvas(salida, pagesize=A4)
+    alto = A4[1]
+    t = lambda x, y, s: c.drawString(x, alto - y, s)  # noqa: E731
+    d = lambda x1, y, s: c.drawRightString(x1, alto - y, s)  # noqa: E731
+    c.setFont("Helvetica", 8)
+    t(30, 40, "Consulta de movimientos de Cuentas Corrientes")
+    t(30, 70, "Empresa: VERDE VERTICAL SPA")
+    t(330, 70, "RUT empresa: 77.552.628-9")
+    t(30, 140, f"Cuenta Corriente N°: {cuenta} Moneda: PESOS DE CHILE Sucursal: 0495 OFICINA")
+    t(32, 206, "Detalle movimientos")
+    for x, texto in ((32, "MONTO"), (106, "DESCRIPCIÓN MOVIMIENTO"), (229, "FECHA"), (273, "SALDO"),
+                     (360, "N° DOCUMENTO"), (428, "SUCURSAL"), (500, "N° MOVIMIENTO")):
+        t(x, 229, texto)
+    y = 225
+    for fecha, monto, saldo, desc, nmov in filas:
+        y += 22
+        t(56, y, "$")
+        d(94, y, f"{monto:,}".replace(",", "."))
+        partes = desc.split("|")
+        t(106, y - 4 if len(partes) > 1 else y, partes[0])
+        if len(partes) > 1:
+            t(106, y + 4, partes[1])
+        t(229, y, fecha)
+        t(305, y, "$")
+        d(348, y, f"{saldo:,}".replace(",", "."))
+        t(360, y, "000000000")
+        t(428, y, "INTERNET")
+        t(500, y, f"{nmov:09d}")
+    t(30, 786, "Nota: Información provisoria sujeta a confirmación por parte del Banco")
+    c.save()
+    return salida.getvalue()
+
+
+class UltimosMovimientosSantanderTests(Base):
+    def subir(self, contenido, nombre="CartolaMovimiento.pdf"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("banco_importar"), {
+            "archivos": [SimpleUploadedFile(nombre, contenido, content_type="application/pdf")]})
+
+    FILAS = [("06/11/2026", -50000, 950000, "1111111111 Transf a|Proveedor Uno", 45),
+             ("05/11/2026", 200000, 1000000, "2222222222 PAGO|CLIENTE DOS", 44)]
+
+    def test_lee_monto_con_signo_saldo_y_descripcion_en_dos_lineas(self):
+        from .banco import leer
+        d = leer(pdf_ultimos_santander(self.FILAS), "x.pdf")
+        self.assertEqual((d["banco"], d["cuenta"], d["rut"], d["provisorio"]),
+                         ("Banco Santander", "12345678", "77552628-9", True))
+        self.assertEqual([(m["fecha"].day, m["monto"], m["saldo"]) for m in d["movimientos"]],
+                         [(5, 200000, 1000000), (6, -50000, 950000)])
+        self.assertEqual(d["movimientos"][1]["descripcion"], "1111111111 Transf a Proveedor Uno")
+        self.assertEqual((d["movimientos"][1]["documento"], d["movimientos"][1]["sucursal"]), ("", "INTERNET"))
+
+    def test_importa_provisorio_y_la_cartola_definitiva_lo_confirma_sin_duplicar(self):
+        from .models import CategoriaBanco, MovimientoBancario, categorias_banco_de
+        r = self.subir(pdf_ultimos_santander(self.FILAS))
+        self.assertContains(r, "2 movimientos nuevos")
+        self.assertContains(r, "saldos de la cartola cuadran")
+        self.assertContains(self.subir(pdf_ultimos_santander(self.FILAS)), "2 ya estaban")
+        categorias_banco_de(self.soc)
+        cat = CategoriaBanco.objects.filter(sociedad=self.soc).first()
+        m = MovimientoBancario.objects.get(monto=-50000)
+        m.categoria = cat
+        m.save()
+        self.assertTrue(m.provisorio)
+        definitiva = pdf_cartola_santander([("05/11/2026", 200000, "ABONO CLIENTE DOS"),
+                                            ("06/11/2026", -50000, "TRANSFERENCIA A PROVEEDOR UNO"),
+                                            ("07/11/2026", -10000, "COMISION")], 800000, 940000)
+        r = self.client.post(reverse("banco_importar"), {"archivos": [__import__(
+            "django.core.files.uploadedfile", fromlist=["x"]).SimpleUploadedFile("hist.pdf", definitiva)]})
+        self.assertContains(r, "1 movimiento nuevo")
+        self.assertContains(r, "2 provisorios confirmados")
+        self.assertEqual(MovimientoBancario.objects.count(), 3)
+        m.refresh_from_db()
+        self.assertEqual((m.provisorio, m.categoria, m.descripcion), (False, cat, "TRANSFERENCIA A PROVEEDOR UNO"))
+        self.assertContains(self.subir(pdf_ultimos_santander(self.FILAS)), "2 ya estaban")
+        self.assertEqual(MovimientoBancario.objects.count(), 3)
+
+
 class CartolaPDFTests(Base):
     def subir(self, contenido):
         from django.core.files.uploadedfile import SimpleUploadedFile

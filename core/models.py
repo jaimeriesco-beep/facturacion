@@ -1159,6 +1159,8 @@ class MovimientoBancario(models.Model):
     documento = models.CharField("N° documento", max_length=30, blank=True)
     sucursal = models.CharField(max_length=40, blank=True)
     huella = models.CharField(max_length=64, editable=False)
+    # Viene de «últimos movimientos» (información provisoria del banco); la cartola definitiva lo confirma.
+    provisorio = models.BooleanField(default=False, editable=False)
     categoria = models.ForeignKey(CategoriaBanco, null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name="movimientos")
     ignorado = models.BooleanField(default=False)

@@ -9,7 +9,8 @@
   <strong>{{ r.archivo }}</strong>
   {% if r.error %}<p class="error-texto">{{ r.error }}</p>
   {% else %}
-  <p>{{ r.cuenta }} · {{ r.desde|date:"d/m/Y" }} al {{ r.hasta|date:"d/m/Y" }} · {{ r.nuevos }} movimiento{{ r.nuevos|pluralize }} nuevo{{ r.nuevos|pluralize }}{% if r.repetidos %} · {{ r.repetidos }} ya estaba{{ r.repetidos|pluralize:"n" }}{% endif %}{% if r.categorizados %} · {{ r.categorizados }} categorizado{{ r.categorizados|pluralize }} por tus reglas{% endif %}</p>
+  <p>{{ r.cuenta }} · {{ r.desde|date:"d/m/Y" }} al {{ r.hasta|date:"d/m/Y" }} · {{ r.nuevos }} movimiento{{ r.nuevos|pluralize }} nuevo{{ r.nuevos|pluralize }}{% if r.confirmados %} · {{ r.confirmados }} provisorio{{ r.confirmados|pluralize }} confirmado{{ r.confirmados|pluralize }}{% endif %}{% if r.repetidos %} · {{ r.repetidos }} ya estaba{{ r.repetidos|pluralize:"n" }}{% endif %}{% if r.categorizados %} · {{ r.categorizados }} categorizado{{ r.categorizados|pluralize }} por tus reglas{% endif %}</p>
+  {% if r.provisorio %}<p class="ayuda">Son los últimos movimientos, que el banco informa como provisorios. Cuando subas la cartola definitiva de esas fechas, se confirman sin duplicarse y conservan su categoría y conciliación.</p>{% endif %}
   {% if r.descuadres %}<p class="error-texto">Ojo: en {{ r.descuadres }} punto{{ r.descuadres|pluralize }} el saldo no cuadra con el movimiento anterior. Puede que la cartola esté incompleta.</p>{% else %}<p class="suave">Los saldos de la cartola cuadran de principio a fin.</p>{% endif %}
   <p><a class="boton" href="{% url 'banco' %}?cuenta={{ r.cuenta.pk }}&amp;mes={{ r.hasta|date:'Y-m' }}">Ver y conciliar</a></p>
   {% endif %}
@@ -27,7 +28,7 @@
   <div class="panel pasos-sii">
     <h2>Cómo descargar la cartola</h2>
     <p><strong>Banco de Chile</strong> (empresas): <em>Cuentas</em> → <em>Saldos y movimientos</em> o <em>Cartolas</em> → elige el período → descarga en formato <strong>Excel</strong> (o TXT). No uses el PDF.</p>
-    <p><strong>Santander</strong> (Office Banking): sirve la <strong>cartola histórica en PDF</strong> (la app recalcula los saldos y verifica que lleguen al saldo final) y también los movimientos en Excel (.xls o .xlsx).</p>
+    <p><strong>Santander</strong> (Office Banking): sirve la <strong>cartola histórica en PDF</strong> (la app recalcula los saldos y verifica que lleguen al saldo final), los movimientos en Excel (.xls o .xlsx) y la <strong>consulta de últimos movimientos en PDF</strong> (<em>Cuentas corrientes</em> → <em>Movimientos</em> → descargar PDF), para conciliar sin esperar la cartola del mes.</p>
     <p><strong>Otros bancos</strong>: descarga los movimientos en Excel o CSV. La app busca las columnas de fecha, descripción, cargo, abono (o monto) y saldo.</p>
     <p class="ayuda">Si la cartola es de otro RUT que la sociedad elegida, la app avisa para que no mezcles cuentas entre sociedades.</p>
   </div>

@@ -45,7 +45,7 @@
       <tr class="{% if m.estado == 'ignorado' %}inactivo{% endif %}">
         <td class="c-sel"><input type="checkbox" class="sel-mov" value="{{ m.pk }}" aria-label="Seleccionar movimiento"></td>
         <td data-rotulo="Fecha">{% if mes and mes != "todos" %}{{ m.fecha|date:"d/m" }}{% else %}{{ m.fecha|date:"d/m/y" }}{% endif %}</td>
-        <td data-rotulo="Descripción"><a href="{% url 'banco_movimiento' m.pk %}" class="enlace-suave">{{ m.descripcion }}</a>{% if m.nota %}<div class="ayuda" style="margin:0">{{ m.nota }}</div>{% endif %}</td>
+        <td data-rotulo="Descripción"><a href="{% url 'banco_movimiento' m.pk %}" class="enlace-suave">{{ m.descripcion }}</a>{% if m.provisorio %} <span class="etiqueta e-prueba" title="De la consulta de últimos movimientos; se confirma al subir la cartola definitiva">Provisorio</span>{% endif %}{% if m.nota %}<div class="ayuda" style="margin:0">{{ m.nota }}</div>{% endif %}</td>
         <td class="num" data-rotulo="Cargo">{% if m.monto < 0 %}{{ m.monto|clp|slice:"1:" }}{% endif %}</td>
         <td class="num monto-abono" data-rotulo="Abono">{% if m.monto > 0 %}{{ m.monto|clp }}{% endif %}</td>
         <td class="num suave" data-rotulo="Saldo">{{ m.saldo|clp }}</td>

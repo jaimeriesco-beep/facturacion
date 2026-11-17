@@ -1,0 +1,40 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Cobranza · pagadas{% endblock %}
+{% block contenido %}
+<div class="titulo"><h1>Cobranza</h1></div>
+<nav class="selector-vista" aria-label="Vista"><a href="{% url 'cobranza' %}">Por cobrar <span class="suave">· {{ n_por_cobrar }}</span></a><a href="{% url 'cobranza' %}?vista=pagadas" class="activo" aria-current="page">Pagadas</a></nav>
+<div class="tarjetas">
+  <div class="tarjeta"><div class="rotulo">Documentos pagados</div><div class="valor">{{ n }}</div></div>
+  <div class="tarjeta"><div class="rotulo">Total cobrado</div><div class="valor monto-abono">{{ total_pagado|clp }}</div></div>
+  <div class="tarjeta"><div class="rotulo">Conciliados con el banco</div><div class="valor">{{ por_banco }}</div><div class="nota">de {{ n }}</div></div>
+</div>
+<form class="filtros" method="get">
+  <input type="hidden" name="vista" value="pagadas">
+  <input type="month" name="mes" value="{{ mes }}" aria-label="Mes de pago" onchange="this.form.submit()" title="Mes en que se pagó">
+  <select name="cliente" onchange="this.form.submit()" aria-label="Cliente"><option value="">Todos los clientes</option>{% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk in clientes_sel %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+  {% if mes or clientes_sel %}<a class="limpiar" href="?vista=pagadas">Limpiar filtros</a>{% endif %}
+</form>
+<div class="panel tabla-panel">
+  {% if pagadas %}
+  <table>
+    <thead><tr><th>Cliente</th><th>Documento</th><th>Emisión</th><th>Pagado el</th><th>Cómo</th><th class="num">Total</th><th class="num">Pagado</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for d in pagadas %}
+      <tr>
+        <td data-rotulo="Cliente">{{ d.cliente }}</td>
+        <td data-rotulo="Documento"><a href="{% url 'documento' d.pk %}">{{ d }}</a></td>
+        <td data-rotulo="Emisión">{{ d.fecha_emision|date:"d/m/Y" }}</td>
+        <td data-rotulo="Pagado el">{{ d.pagado_el|date:"d/m/Y" }}</td>
+        <td data-rotulo="Cómo">{% if d.por_banco %}<span class="etiqueta e-ok">⚡ Conciliada con el banco</span>{% else %}<span class="suave">Registrado a mano</span>{% endif %}</td>
+        <td class="num" data-rotulo="Total">{{ d.total|clp }}</td>
+        <td class="num" data-rotulo="Pagado">{{ d.pagado|clp }}</td>
+        <td data-rotulo="Estado"><span class="etiqueta e-aceptado">Pagada</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% include "core/_paginas.html" %}
+  {% else %}<p class="vacio">No hay documentos pagados{% if mes or clientes_sel %} con esos filtros{% endif %}.</p>{% endif %}
+</div>
+{% endblock %}

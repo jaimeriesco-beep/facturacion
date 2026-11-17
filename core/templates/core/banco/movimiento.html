@@ -95,7 +95,7 @@
   <aside>
     <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="categoria">
       <h2>Categoría</h2>
-      <p class="suave" style="margin-top:-4px">Para lo que no es una factura: sueldos, impuestos, contribuciones, comisiones…</p>
+      <p class="suave" style="margin-top:-4px">Para lo que no es una factura: sueldos, impuestos, contribuciones, comisiones…</p>{% if m.por_conciliar %}<p class="ayuda" style="margin-top:-4px">Ojo: categorizar no marca facturas como pagadas. Si este {% if m.es_abono %}abono paga una factura, concílialo con ella{% else %}cargo paga una compra, concílialo con ella{% endif %} (a la izquierda) para que quede pagada en {% if m.es_abono %}cobranza{% else %}compras{% endif %}.</p>{% endif %}
       <div class="campo"><label for="m-cat">Categoría</label><select id="m-cat" name="categoria"><option value="">Sin categoría</option>{% for c in categorias %}<option value="{{ c.pk }}" {% if c.pk == m.categoria_id %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
       <div class="campo" style="margin-top:10px"><label for="m-nota">Nota</label><input id="m-nota" name="nota" value="{{ m.nota }}" maxlength="200"></div>
       <div class="campo" style="margin-top:10px"><label for="m-regla">Crear regla <span class="suave">(opcional)</span></label><input id="m-regla" name="regla" maxlength="80" placeholder="{{ regla_sugerida }}"><p class="ayuda">Los movimientos cuya descripción contenga este texto irán siempre a esta categoría. Ej.: «{{ regla_sugerida }}».</p></div>

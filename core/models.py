@@ -547,7 +547,7 @@ class Documento(models.Model):
 
     @property
     def estado_cobro(self):
-        if not self.es_factura or self.estado != self.EMITIDO or self.es_prueba:
+        if self.tipo not in POR_COBRAR or self.estado != self.EMITIDO or self.es_prueba:
             return ""
         if self.saldo <= 0:
             return "pagada"

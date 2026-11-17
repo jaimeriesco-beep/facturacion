@@ -1240,6 +1240,8 @@ ESTADOS_PLAZO = [("vencida", "Vencidas"), ("pronto", "Por vencer"), ("al-dia", "
 
 @con_sociedad
 def cobranza(request):
+    if request.GET.get("vista") == "pagadas":
+        return _cobranza_pagadas(request)
     qs = (request.sociedad.documentos.por_cobrar().select_related("cliente")
           .order_by("fecha_vencimiento", "id"))
     pendientes = list(qs)
@@ -1271,7 +1273,35 @@ def cobranza(request):
         "total": sum(tramos), "clientes": con_deuda, "clientes_sel": clientes_sel,
         "estados": [(c, n, conteo[c]) for c, n in ESTADOS_PLAZO], "estados_sel": estados, "filtrado": bool(estados or clientes_sel),
         "nombres_sel": [str(c) for c in con_deuda if c.pk in clientes_sel],
-        "pagado_form": MarcarPagadoForm(), "dias_aviso": DIAS_AVISO})
+        "pagado_form": MarcarPagadoForm(), "dias_aviso": DIAS_AVISO, "vista": "por_cobrar"})
+
+
+def _cobranza_pagadas(request):
+    """Facturas y comprobantes ya pagados (a mano, desde cobranza o al conciliar con el banco)."""
+    from django.db.models import Exists, Max, OuterRef
+    from .models import Pago
+    soc = request.sociedad
+    qs = (soc.documentos.filter(tipo__in=POR_COBRAR, estado=Documento.EMITIDO, es_prueba=False)
+          .con_saldo().filter(saldo_a__lte=0, pagado_a__gt=0).select_related("cliente")
+          .annotate(pagado_el=Max("pagos__fecha"),
+                    por_banco=Exists(Pago.objects.filter(documento=OuterRef("pk"), conciliacion__isnull=False)))
+          .order_by("-pagado_el", "-id"))
+    clientes = sorted({d.cliente for d in qs}, key=lambda c: str(c).lower())
+    clientes_sel = {int(c) for c in request.GET.getlist("cliente") if c.isdigit()}
+    if clientes_sel:
+        qs = qs.filter(cliente_id__in=clientes_sel)
+    if mes := request.GET.get("mes", ""):
+        try:
+            anio, m = (int(x) for x in mes.split("-"))
+            qs = qs.filter(pagos__fecha__year=anio, pagos__fecha__month=m).distinct()
+        except ValueError:
+            pass
+    filas = list(qs)
+    pagina, ctx_paginas = paginar(request, filas)
+    return render(request, "core/cobranza_pagadas.html", {
+        "pagadas": list(pagina), **ctx_paginas, "n": len(filas), "total_pagado": sum(d.pagado for d in filas),
+        "por_banco": sum(1 for d in filas if d.por_banco), "clientes": clientes, "clientes_sel": clientes_sel,
+        "n_por_cobrar": soc.documentos.por_cobrar().count(), "mes": mes, "vista": "pagadas"})
 
 
 # --- Facturación recurrente ---------------------------------------------------

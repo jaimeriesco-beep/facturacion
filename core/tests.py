@@ -1972,6 +1972,10 @@ class RayoTests(Base):
         self.client.post(reverse("conciliar_documento", args=["v", self.f1.pk]),
                          {"movimiento": self.m_nombre.pk, "monto": "119.000"})
         self.assertEqual(Documento.objects.con_saldo().get(pk=self.f1.pk).saldo_a, 0)
+        self.assertNotIn(self.f1, self.client.get(reverse("cobranza")).context["pendientes"])
+        r = self.client.get(reverse("cobranza"), {"vista": "pagadas"})
+        self.assertEqual([(d, d.por_banco) for d in r.context["pagadas"]], [(self.f1, True)])
+        self.assertContains(r, "Conciliada con el banco")
         r = self.client.get(reverse("compra", args=[self.compra.pk]))
         self.assertEqual(r.context["movs_banco"][0]["mov"], self.m_compra)
         self.client.post(reverse("conciliar_documento", args=["c", self.compra.pk]), {"movimiento": self.m_compra.pk})

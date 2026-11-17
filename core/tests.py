@@ -1786,6 +1786,18 @@ class PaginacionTests(Base):
         r = self.client.get(reverse("compras"), {"periodo": "2026-09"})
         self.assertEqual(r.context["n_total"], 26)
 
+    def test_movimientos_del_banco_paginados_mas_recientes_primero(self):
+        from .models import CuentaBancaria, MovimientoBancario
+        cuenta = CuentaBancaria.objects.create(sociedad=self.soc, banco="Banco de Chile", numero="123")
+        for i in range(53):
+            MovimientoBancario.objects.create(cuenta=cuenta, fecha=date(2026, 10 + (i >= 50), 1 + i % 28),
+                                              orden=i, monto=-1000 - i, descripcion=f"MOV {i}", huella=f"h{i}")
+        r = self.client.get(reverse("banco"))
+        self.assertEqual((len(r.context["movimientos"]), r.context["pagina"].paginator.count), (50, 53))
+        self.assertEqual(r.context["movimientos"][0].fecha.month, 11)
+        self.assertEqual(len(self.client.get(reverse("banco"), {"pagina": 2}).context["movimientos"]), 3)
+        self.assertEqual(self.client.get(reverse("banco"), {"mes": "2026-11"}).context["total"], 3)
+
 
 class CartolaSantanderTests(Base):
     def test_excel_con_cargo_y_abono_del_mas_reciente_al_mas_antiguo(self):

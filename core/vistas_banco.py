@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from . import banco
+from .paginas import paginar
 from .models import (GRUPOS_BANCO, CategoriaBanco, Compra, CuentaBancaria, Documento, MovimientoBancario,
                      ReglaBanco, categorias_banco_de, hoy)
 from .utils import MESES, formatear_clp
@@ -46,7 +47,7 @@ def movimientos(request):
     cuenta = next((c for c in cuentas if str(c.pk) == g.get("cuenta")), cuentas[0])
     qs = _movimientos(soc).filter(cuenta=cuenta)
     meses = sorted({f"{f:%Y-%m}" for f in cuenta.movimientos.values_list("fecha", flat=True)}, reverse=True)
-    mes = g.get("mes", meses[0] if meses else "")
+    mes = g.get("mes", "")
     if mes and mes != "todos":
         anio, m = mes.split("-")
         qs = qs.filter(fecha__year=int(anio), fecha__month=int(m))
@@ -76,8 +77,10 @@ def movimientos(request):
                         ", ".join(str(c.documento) for c in m.conciliaciones.all()), m.nota] for m in filas])
     ultimo = cuenta.ultimo
     categorias = list(categorias_banco_de(soc))
+    filas.reverse()                                    # lo más reciente primero
+    pagina, ctx_paginas = paginar(request, filas)
     return render(request, "core/banco/movimientos.html", {
-        "cuentas": cuentas, "cuenta": cuenta, "movimientos": filas, "categorias": categorias,
+        "cuentas": cuentas, "cuenta": cuenta, "movimientos": list(pagina), **ctx_paginas, "categorias": categorias,
         "meses": [(m, _mes_nombre(m)) for m in meses], "mes": mes, "g": g, "ultimo": ultimo,
         "abonos": sum(m.monto for m in del_periodo if m.monto > 0),
         "cargos": -sum(m.monto for m in del_periodo if m.monto < 0),

@@ -22,7 +22,7 @@
 <form class="filtros" method="get">
   <input type="hidden" name="cuenta" value="{{ cuenta.pk }}">
   {% if g.categoria %}<input type="hidden" name="categoria" value="{{ g.categoria }}">{% endif %}
-  <select name="mes" onchange="this.form.submit()" aria-label="Mes">{% for v, n in meses %}<option value="{{ v }}" {% if mes == v %}selected{% endif %}>{{ n }}</option>{% endfor %}<option value="todos" {% if mes == 'todos' %}selected{% endif %}>Todos los meses</option></select>
+  <select name="mes" onchange="this.form.submit()" aria-label="Mes"><option value="">Todos los meses</option>{% for v, n in meses %}<option value="{{ v }}" {% if mes == v %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
   <input type="search" name="q" value="{{ g.q }}" placeholder="Buscar en la descripción" aria-label="Buscar">
   <select name="estado" onchange="this.form.submit()" aria-label="Estado">
     <option value="">Todos</option>
@@ -44,7 +44,7 @@
     {% for m in movimientos %}
       <tr class="{% if m.estado == 'ignorado' %}inactivo{% endif %}">
         <td class="c-sel"><input type="checkbox" class="sel-mov" value="{{ m.pk }}" aria-label="Seleccionar movimiento"></td>
-        <td data-rotulo="Fecha">{{ m.fecha|date:"d/m" }}</td>
+        <td data-rotulo="Fecha">{% if mes and mes != "todos" %}{{ m.fecha|date:"d/m" }}{% else %}{{ m.fecha|date:"d/m/y" }}{% endif %}</td>
         <td data-rotulo="Descripción"><a href="{% url 'banco_movimiento' m.pk %}" class="enlace-suave">{{ m.descripcion }}</a>{% if m.nota %}<div class="ayuda" style="margin:0">{{ m.nota }}</div>{% endif %}</td>
         <td class="num" data-rotulo="Cargo">{% if m.monto < 0 %}{{ m.monto|clp|slice:"1:" }}{% endif %}</td>
         <td class="num monto-abono" data-rotulo="Abono">{% if m.monto > 0 %}{{ m.monto|clp }}{% endif %}</td>
@@ -60,6 +60,7 @@
     {% endfor %}
     </tbody>
   </table>
+  {% include "core/_paginas.html" %}
   {% else %}<div class="vacio">No hay movimientos con estos filtros.</div>{% endif %}
 </div>
 <div>

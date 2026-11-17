@@ -39,7 +39,7 @@
     {% if not s.completo %}<div class="ayuda">Quedan {{ s.resto|clp }} del movimiento sin {% if s.tipo == 'v' %}factura{% else %}compra{% endif %} pendiente{% if s.persona %} de {{ s.persona }}{% endif %}: quedan por asignar.</div>{% endif %}
   </div>
   <div class="decision">
-    <span class="motivo">⚡ {% if s.motivo == 'descripcion' %}Recomendado por {% if s.como == 'alias' %}nombre en la cartola{% else %}descripción{% endif %} y monto{% elif s.motivo == 'antiguas' %}{% if s.como == 'alias' %}Nombre en la cartola{% else %}Nombre del {% if s.tipo == 'v' %}cliente{% else %}proveedor{% endif %}{% endif %}: paga sus facturas más antiguas{% else %}Recomendado por monto{% endif %}</span>
+    <span class="motivo">⚡ {% if s.motivo == 'monto' %}Recomendado por monto{% else %}Reconocido por {{ s.como_texto }}{% if s.motivo == 'descripcion' %} y monto exacto{% else %}: paga sus {% if s.tipo == 'v' %}facturas{% else %}compras{% endif %} más antiguas{% endif %}{% endif %}</span>
     <form method="post">{% csrf_token %}<input type="hidden" name="accion" value="conciliar"><input type="hidden" name="mov" value="{{ s.mov.pk }}"><button type="submit" class="primario chico">Conciliar</button></form>
     <form method="post">{% csrf_token %}<input type="hidden" name="accion" value="rechazar"><input type="hidden" name="mov" value="{{ s.mov.pk }}"><button type="submit" class="boton-enlace">Rechazar</button></form>
   </div>

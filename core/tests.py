@@ -2033,6 +2033,24 @@ class FacturasAntiguasTests(Base):
         x = sugerencias_automaticas(self.soc)[0]
         self.assertEqual(([d.folio for d, _ in x["asignaciones"]], x["como"]), ([21], "alias"))
 
+    def test_reconoce_por_rut_en_la_descripcion(self):
+        from .banco import ruts_en, sugerencias_automaticas
+        self.assertEqual(ruts_en("Pago: Proveedores 0760864285 Oficina Central"), ["76086428-5"])
+        m = self.mov(5, 11900, "Pago: Proveedores 0760864285")
+        x = sugerencias_automaticas(self.soc)[0]
+        self.assertEqual((x["mov"], [d.folio for d, _ in x["asignaciones"]], x["como"]), (m, [20], "rut"))
+
+    def test_aprende_de_pagos_anteriores_que_se_repiten(self):
+        from .banco import conciliar, sugerencias_automaticas
+        from .models import MovimientoBancario
+        # Dos pagos de «Puerto Colono» (nombre distinto al del cliente) ya se conciliaron con sus facturas.
+        for i, d in enumerate((self.a, self.b)):
+            m = self.mov(3 + i, d.total, "Traspaso De: Puerto Colono Spa")
+            conciliar(MovimientoBancario.objects.get(pk=m.pk), [(Documento.objects.con_saldo().get(pk=d.pk), d.total)])
+        nuevo = self.mov(9, 35700, "Traspaso De: Puerto Colono Spa")
+        x = sugerencias_automaticas(self.soc)[0]
+        self.assertEqual((x["mov"], [d.folio for d, _ in x["asignaciones"]], x["como"]), (nuevo, [22], "historial"))
+
 
 class CartolaSantanderTests(Base):
     def test_excel_con_cargo_y_abono_del_mas_reciente_al_mas_antiguo(self):

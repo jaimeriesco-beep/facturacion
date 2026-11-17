@@ -802,10 +802,54 @@ def nombre_en_cartola(descripcion):
     return texto[:80]
 
 
+def ruts_en(descripcion):
+    """RUT válidos escritos en la descripción (p. ej. «Pago: Proveedores 0891716001» → 89171600-1)."""
+    from .utils import normalizar_rut
+    encontrados = []
+    for numero in re.findall(r"\b\d{1,2}\.?\d{3}\.?\d{3}-?[\dkK]\b|\b\d{8,11}\b", descripcion or ""):
+        limpio = numero.replace(".", "").replace("-", "").lstrip("0")
+        if 8 <= len(limpio) <= 9:
+            try:
+                encontrados.append(normalizar_rut(limpio))
+            except Exception:
+                pass
+    return encontrados
+
+
+def _clave_historial(descripcion):
+    return _clave(nombre_en_cartola(descripcion))
+
+
+def historial_conciliaciones(sociedad):
+    """Cómo se han conciliado antes los movimientos: {(tipo, clave): Counter(persona)} y
+    {(tipo, clave, monto): Counter(persona)}, para reconocer pagos que se repiten."""
+    from collections import Counter
+    por_nombre, por_monto = {}, {}
+    for c in (Conciliacion.objects.filter(movimiento__cuenta__sociedad=sociedad)
+              .select_related("movimiento", "pago__documento", "pago_compra__compra")):
+        if c.pago_id:
+            tipo, persona = "v", c.pago.documento.cliente_id
+        else:
+            tipo, persona = "c", c.pago_compra.compra.proveedor_id
+        clave = _clave_historial(c.movimiento.descripcion)
+        if len(clave) < 3:
+            continue
+        por_nombre.setdefault((tipo, clave), Counter())[persona] += 1
+        por_monto.setdefault((tipo, clave, abs(c.movimiento.monto)), Counter())[persona] += 1
+    return por_nombre, por_monto
+
+
+def _unico(contador, minimo=2, proporcion=0.8):
+    if not contador:
+        return None
+    persona, veces = contador.most_common(1)[0]
+    return persona if veces >= minimo and veces / sum(contador.values()) >= proporcion else None
+
+
 class _Contraparte:
     """Clientes o proveedores con sus documentos pendientes, para reconocerlos en la cartola."""
 
-    def __init__(self, filas):
+    def __init__(self, filas, tipo="v", historial=({}, {})):
         # filas: [(persona, documento, saldo)]
         self.docs = {}
         self.personas = {}
@@ -816,9 +860,18 @@ class _Contraparte:
         self.nombres = {pk: _palabras(f"{p.razon_social} {p.nombre_fantasia}") for pk, p in self.personas.items()}
         self.alias = {pk: [_clave(a) for a in (p.alias_banco or "").split(",") if len(_clave(a)) >= 3]
                       for pk, p in self.personas.items()}
+        self.ruts = {}
+        for pk, p in self.personas.items():
+            if p.rut:
+                self.ruts.setdefault(p.rut, set()).add(pk)
+        self.tipo, (self.hist_nombre, self.hist_monto) = tipo, historial
 
-    def reconocer(self, descripcion):
-        """(pk de la persona, «alias» o «nombre») si la descripción la identifica sin dudas."""
+    def reconocer(self, descripcion, monto=None):
+        """(pk de la persona, cómo se reconoció) si la descripción la identifica sin dudas:
+        por RUT, por «cómo aparece en la cartola», por nombre o por cómo se concilió antes."""
+        for rut in ruts_en(descripcion):
+            if len(self.ruts.get(rut, ())) == 1:
+                return next(iter(self.ruts[rut])), "rut"
         texto = f" {_clave(descripcion)} "
         por_alias = [pk for pk, alias in self.alias.items() if any(f" {a} " in texto for a in alias)]
         if len(por_alias) == 1:
@@ -833,6 +886,14 @@ class _Contraparte:
         puntajes.sort(reverse=True)
         if puntajes and (len(puntajes) == 1 or puntajes[0][:2] > puntajes[1][:2]):
             return puntajes[0][2], "nombre"
+        clave = _clave_historial(descripcion)
+        persona = _unico(self.hist_nombre.get((self.tipo, clave)))
+        if persona in self.personas:
+            return persona, "historial"
+        if monto:
+            persona = _unico(self.hist_monto.get((self.tipo, clave, monto)), proporcion=1)
+            if persona in self.personas:
+                return persona, "historial_monto"
         return None, None
 
     def pendientes(self, pk, fecha):
@@ -840,6 +901,11 @@ class _Contraparte:
         return sorted((d for d in self.docs.get(pk, []) if self.saldo[d.pk] > 0
                        and (fecha - d.fecha_emision).days >= -DIAS_DESPUES),
                       key=lambda d: (d.fecha_emision, d.folio or 0, d.pk))
+
+
+COMO_TEXTO = {"rut": "RUT en la descripción", "alias": "nombre en la cartola", "nombre": "nombre en la descripción",
+              "historial": "pagos anteriores con el mismo nombre",
+              "historial_monto": "pagos anteriores con el mismo nombre y monto"}
 
 
 def sugerencias_automaticas(sociedad):
@@ -854,10 +920,12 @@ def sugerencias_automaticas(sociedad):
     from .models import SugerenciaRechazada
     rechazos = set(SugerenciaRechazada.objects.filter(movimiento__cuenta__sociedad=sociedad)
                    .values_list("movimiento_id", "tipo", "doc_id"))
+    historial = historial_conciliaciones(sociedad)
     lados = {
-        "v": _Contraparte([(d.cliente, d, d.saldo) for d in sociedad.documentos.por_cobrar().select_related("cliente")]),
+        "v": _Contraparte([(d.cliente, d, d.saldo) for d in sociedad.documentos.por_cobrar().select_related("cliente")],
+                          "v", historial),
         "c": _Contraparte([(c.proveedor, c, c.saldo) for c in sociedad.compras.con_saldo().select_related("proveedor")
-                           if c.saldo > 0 and not c.es_nota_credito]),
+                           if c.saldo > 0 and not c.es_nota_credito], "c", historial),
     }
     resultado = []
     for m in sorted(movimientos_por_conciliar(sociedad), key=lambda x: (x.fecha, x.orden, x.pk)):
@@ -866,7 +934,7 @@ def sugerencias_automaticas(sociedad):
         monto = m.por_conciliar
         rechazado = lambda doc: (m.pk, tipo, doc.pk) in rechazos  # noqa: E731
         asignaciones, motivo = [], None
-        pk, como = lado.reconocer(m.descripcion)
+        pk, como = lado.reconocer(m.descripcion, monto)
         if pk:
             docs = [d for d in lado.pendientes(pk, m.fecha) if not rechazado(d)]
             exacto = next((d for d in docs if lado.saldo[d.pk] == monto), None)
@@ -893,6 +961,7 @@ def sugerencias_automaticas(sociedad):
             lado.saldo[d.pk] -= parte
         primero = asignaciones[0][0]
         resultado.append({"mov": m, "tipo": tipo, "motivo": motivo, "como": como, "asignaciones": asignaciones,
+                          "como_texto": COMO_TEXTO.get(como, ""),
                           "doc": primero, "monto": sum(p for _, p in asignaciones),
                           "persona": lado.personas.get(pk) if pk else None,
                           "completo": sum(p for _, p in asignaciones) == monto,

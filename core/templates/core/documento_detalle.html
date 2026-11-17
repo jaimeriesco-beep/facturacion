@@ -188,6 +188,7 @@
     </form>
     {% endif %}
   </div>
+  {% if movs_banco is not None %}{% include "core/_conciliar_doc.html" with tipo="v" doc_pk=doc.pk %}{% endif %}
 </div>
 {% endif %}
 {% if asociados.0 or asociados.1 %}

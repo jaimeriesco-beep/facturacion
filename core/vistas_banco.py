@@ -7,6 +7,7 @@ from django import forms
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -588,3 +589,74 @@ def cuentas(request):
     return render(request, "core/banco/cuentas.html", {
         "pestanas": _pestanas("cuentas"), "cuentas": soc.cuentas.annotate(n=Count("movimientos")),
         "bancos": CuentaBancaria.BANCOS})
+
+
+# --------------------------------------------------- Sugerencias de conciliación («el rayo»)
+
+def _doc_de(soc, tipo, pk):
+    base = soc.documentos.con_saldo() if tipo == "v" else soc.compras.con_saldo()
+    return base.filter(pk=pk).first() if str(pk).isdigit() else None
+
+
+@con_sociedad
+def sugerencias(request):
+    from .models import SugerenciaRechazada
+    soc = request.sociedad
+    if request.method == "POST":
+        que = request.POST.get("accion")
+        pares = request.POST.getlist("par")          # «mov:tipo:doc»
+        hechas = 0
+        for par in pares:
+            try:
+                mov_id, tipo, doc_id = par.split(":")
+            except ValueError:
+                continue
+            m = _movimientos(soc).filter(pk=mov_id).first() if mov_id.isdigit() else None
+            doc = _doc_de(soc, tipo, doc_id)
+            if not m or not doc:
+                continue
+            if que == "rechazar":
+                SugerenciaRechazada.objects.get_or_create(movimiento=m, tipo=tipo, doc_id=doc.pk)
+                hechas += 1
+            elif m.por_conciliar and doc.saldo > 0:
+                hechas += bool(banco.conciliar(m, [(doc, min(m.por_conciliar, doc.saldo))]))
+        banco.olvidar_sugerencias(soc)
+        if que == "rechazar":
+            messages.success(request, "Sugerencia descartada. No se volverá a proponer.")
+        elif hechas:
+            messages.success(request, f"{hechas} movimiento{'s' if hechas != 1 else ''} conciliado{'s' if hechas != 1 else ''}; "
+                                      "los cobros y pagos quedaron registrados.")
+        return redirect("banco_sugerencias")
+    lista = banco.sugerencias_automaticas(soc)
+    tipo = request.GET.get("tipo", "")
+    if tipo in ("v", "c"):
+        lista = [x for x in lista if x["tipo"] == tipo]
+    if request.GET.get("motivo") in ("descripcion", "monto"):
+        lista = [x for x in lista if x["motivo"] == request.GET["motivo"]]
+    pagina, ctx_paginas = paginar(request, lista, 20)
+    return render(request, "core/banco/sugerencias.html", {
+        "sugerencias": list(pagina), **ctx_paginas, "total": len(lista), "g": request.GET})
+
+
+@require_POST
+@con_sociedad
+def conciliar_documento(request, tipo, pk):
+    """Concilia una factura de venta o una compra con un movimiento del banco, desde el documento."""
+    soc = request.sociedad
+    doc = _doc_de(soc, tipo, pk)
+    if doc is None:
+        raise Http404
+    destino = reverse("documento" if tipo == "v" else "compra", args=[pk])
+    m = _movimientos(soc).filter(pk=request.POST.get("movimiento", "")).first() if request.POST.get("movimiento", "").isdigit() else None
+    if m is None or m.es_abono != (tipo == "v"):
+        messages.error(request, "Elige el movimiento del banco que corresponde.")
+        return redirect(destino)
+    try:
+        monto = int(request.POST.get("monto", "").replace(".", "").replace("$", "").strip())
+    except ValueError:
+        monto = min(m.por_conciliar, doc.saldo)
+    if banco.conciliar(m, [(doc, monto)]):
+        messages.success(request, f"{doc} conciliado con el movimiento del {m.fecha:%d/%m/%Y} ({m.descripcion[:50]}).")
+    else:
+        messages.error(request, "No se pudo conciliar: el movimiento o el documento ya no tienen saldo pendiente.")
+    return redirect(destino)

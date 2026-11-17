@@ -1247,3 +1247,14 @@ class Conciliacion(models.Model):
     @property
     def documento(self):
         return self.pago.documento if self.pago_id else self.pago_compra.compra
+
+
+class SugerenciaRechazada(models.Model):
+    """Pareja movimiento–documento que el usuario descartó en las sugerencias de conciliación."""
+    movimiento = models.ForeignKey(MovimientoBancario, on_delete=models.CASCADE, related_name="rechazos")
+    tipo = models.CharField(max_length=1)          # v = documento de venta, c = compra
+    doc_id = models.PositiveIntegerField()
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["movimiento", "tipo", "doc_id"], name="rechazo_unico")]

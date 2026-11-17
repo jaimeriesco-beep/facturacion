@@ -18,7 +18,7 @@ import unicodedata
 from datetime import date, datetime
 
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import F, Q, Sum
 
 from .models import (COBRO_CLIENTES, PAGO_PROVEEDORES, CategoriaBanco, Compra, Conciliacion,
                      CuentaBancaria, Documento, MovimientoBancario, Pago, PagoCompra,
@@ -666,6 +666,7 @@ def importar(sociedad, contenido, nombre="", cuenta=None, aceptar_otro_rut=False
     MovimientoBancario.objects.bulk_create(nuevos)
     creados = list(cuenta.movimientos.filter(huella__in=[m.huella for m in nuevos]))
     reglas = aplicar_reglas(sociedad, creados)
+    olvidar_sugerencias(sociedad)
     fechas = [m["fecha"] for m in datos["movimientos"]]
     # Los saldos de la cartola deben encadenarse: si no, faltan movimientos en el archivo.
     descuadres, saldo = 0, None
@@ -751,6 +752,7 @@ def conciliar(movimiento, asignaciones):
         movimiento.categoria = CategoriaBanco.objects.filter(
             sociedad=movimiento.cuenta.sociedad, nombre=nombre).first()
         movimiento.save(update_fields=["categoria"])
+    olvidar_sugerencias(movimiento.cuenta.sociedad)
     return hechos
 
 
@@ -764,3 +766,123 @@ def deshacer(movimiento):
     if movimiento.categoria and movimiento.categoria.nombre in (COBRO_CLIENTES, PAGO_PROVEEDORES):
         movimiento.categoria = None
         movimiento.save(update_fields=["categoria"])
+    olvidar_sugerencias(movimiento.cuenta.sociedad)
+
+
+# ------------------------------------------------- Sugerencias automáticas («el rayo»)
+
+DIAS_ANTES, DIAS_DESPUES = 365, 7   # el documento se emite antes del pago (o pocos días después)
+
+
+def _clave_cache(sociedad):
+    return f"rayo-{sociedad.pk}"
+
+
+def olvidar_sugerencias(sociedad):
+    from django.core.cache import cache
+    cache.delete(_clave_cache(sociedad))
+
+
+def movimientos_por_conciliar(sociedad):
+    """Movimientos que todavía pueden corresponder a una factura o compra."""
+    qs = (MovimientoBancario.objects.filter(cuenta__sociedad=sociedad, ignorado=False)
+          .select_related("cuenta", "categoria")
+          .annotate(conciliado_a=Sum("conciliaciones__monto", default=0)))
+    return [m for m in qs if m.por_conciliar > 0
+            and (not m.categoria_id or m.categoria.nombre in (COBRO_CLIENTES, PAGO_PROVEEDORES))]
+
+
+def sugerencias_automaticas(sociedad):
+    """Parejas movimiento ↔ documento con el mismo monto pendiente, una a una.
+
+    Se recomienda por descripción cuando el nombre del cliente o proveedor aparece en el
+    movimiento, y por monto cuando el monto calza con un solo documento posible.
+    """
+    from .models import SugerenciaRechazada
+    rechazos = set(SugerenciaRechazada.objects.filter(movimiento__cuenta__sociedad=sociedad)
+                   .values_list("movimiento_id", "tipo", "doc_id"))
+    docs = {"v": {}, "c": {}}
+    for d in sociedad.documentos.por_cobrar().select_related("cliente"):
+        docs["v"].setdefault(d.saldo, []).append((d, _palabras(f"{d.cliente.razon_social} {d.cliente.nombre_fantasia}")))
+    for c in sociedad.compras.con_saldo().select_related("proveedor"):
+        if c.saldo > 0 and not c.es_nota_credito:
+            docs["c"].setdefault(c.saldo, []).append((c, _palabras(f"{c.proveedor.razon_social} {c.proveedor.nombre_fantasia}")))
+    candidatas = []
+    for m in movimientos_por_conciliar(sociedad):
+        tipo = "v" if m.es_abono else "c"
+        palabras = _palabras(m.descripcion)
+        posibles = []
+        for doc, nombre in docs[tipo].get(m.por_conciliar, []):
+            if (m.pk, tipo, doc.pk) in rechazos:
+                continue
+            dias = (m.fecha - doc.fecha_emision).days
+            if not -DIAS_DESPUES <= dias <= DIAS_ANTES:
+                continue
+            posibles.append((doc, bool(palabras & nombre), abs(dias)))
+        por_nombre = [p for p in posibles if p[1]]
+        if por_nombre:
+            elegidos, motivo = por_nombre, "descripcion"
+        elif len(posibles) == 1:
+            elegidos, motivo = posibles, "monto"
+        else:
+            continue            # varios documentos con el mismo monto y ningún nombre: no se adivina
+        for doc, _, dias in elegidos:
+            candidatas.append({"mov": m, "doc": doc, "tipo": tipo, "motivo": motivo, "dias": dias,
+                               "monto": m.por_conciliar})
+    # Una a una: primero las de descripción, luego las más cercanas en fecha.
+    candidatas.sort(key=lambda c: (c["motivo"] != "descripcion", c["dias"], c["mov"].fecha))
+    usados_mov, usados_doc, resultado = set(), set(), []
+    for c in candidatas:
+        clave_doc = (c["tipo"], c["doc"].pk)
+        if c["mov"].pk in usados_mov or clave_doc in usados_doc:
+            continue
+        usados_mov.add(c["mov"].pk)
+        usados_doc.add(clave_doc)
+        resultado.append(c)
+    resultado.sort(key=lambda c: (c["mov"].fecha, c["mov"].pk), reverse=True)
+    return resultado
+
+
+def resumen_rayo(sociedad):
+    """Cantidad de sugerencias y % de movimientos del mes ya resueltos (para el encabezado)."""
+    from django.core.cache import cache
+    clave = _clave_cache(sociedad)
+    datos = cache.get(clave)
+    if datos is None:
+        from .models import hoy
+        hoy_ = hoy()
+        del_mes = list(MovimientoBancario.objects.filter(cuenta__sociedad=sociedad, fecha__year=hoy_.year,
+                                                         fecha__month=hoy_.month)
+                       .annotate(conciliado_a=Sum("conciliaciones__monto", default=0)))
+        resueltos = sum(1 for m in del_mes if m.estado != "pendiente")
+        datos = {"n": len(sugerencias_automaticas(sociedad)),
+                 "avance": round(100 * resueltos / len(del_mes)) if del_mes else None}
+        cache.set(clave, datos, 300)
+    return datos
+
+
+def movimientos_para_documento(doc, limite=8):
+    """Movimientos del banco que podrían pagar esta factura o compra, mejor puntaje primero."""
+    from .models import Compra
+    es_compra = isinstance(doc, Compra)
+    sociedad = doc.sociedad
+    nombre = (f"{doc.proveedor.razon_social} {doc.proveedor.nombre_fantasia}" if es_compra
+              else f"{doc.cliente.razon_social} {doc.cliente.nombre_fantasia}")
+    palabras = _palabras(nombre)
+    saldo = doc.saldo
+    resultado = []
+    for m in movimientos_por_conciliar(sociedad):
+        if m.es_abono == es_compra:
+            continue
+        dias = (m.fecha - doc.fecha_emision).days
+        if dias < -DIAS_DESPUES:
+            continue
+        puntos = (60 if m.por_conciliar == saldo else 10 if m.por_conciliar < saldo else 0)
+        nombre_ok = bool(palabras & _palabras(m.descripcion))
+        puntos += 30 if nombre_ok else 0
+        puntos -= min(dias, 120) // 30
+        if puntos >= 10:
+            resultado.append({"mov": m, "puntos": puntos, "exacto": m.por_conciliar == saldo, "nombre": nombre_ok,
+                              "monto": min(m.por_conciliar, saldo)})
+    resultado.sort(key=lambda r: (-r["puntos"], abs((r["mov"].fecha - doc.fecha_emision).days)))
+    return resultado[:limite]

@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from . import banco
 from . import compras as rcv
 from .paginas import paginar, volver_seguro
 from .forms import Fecha, FormBase
@@ -305,7 +306,9 @@ def compra(request, pk):
                     messages.success(request, f"Pago de {formatear_clp(monto)} registrado.")
             return redirect(detalle)
     return render(request, "core/compras/compra.html", {
-        "c": c, "form": form, "volver": volver, "pagos": c.pagos.all(), "medios": Pago.MEDIOS, "hoy": hoy(),
+        "c": c, "form": form, "volver": volver,
+        "movs_banco": (banco.movimientos_para_documento(c)
+                       if c.saldo > 0 and not c.es_nota_credito and soc.cuentas.exists() else None), "pagos": c.pagos.all(), "medios": Pago.MEDIOS, "hoy": hoy(),
         "otras": soc.compras.filter(proveedor=c.proveedor).exclude(pk=c.pk)[:8]})
 
 

@@ -1,0 +1,43 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Sugerencias de conciliación{% endblock %}
+{% block contenido %}
+<div class="titulo">
+  <div><h1>⚡ Sugerencias de conciliación</h1>
+  <p class="suave" style="margin:4px 0 0">Movimientos del banco que calzan con una factura de venta o una compra por el mismo monto pendiente. Revísalas y apruébalas una a una o todas a la vez.</p></div>
+  {% if sugerencias %}
+  <form method="post" class="acciones" onsubmit="return confirm('¿Conciliar las {{ sugerencias|length }} sugerencias de esta página?')">{% csrf_token %}
+    <input type="hidden" name="accion" value="conciliar">
+    {% for s in sugerencias %}<input type="hidden" name="par" value="{{ s.mov.pk }}:{{ s.tipo }}:{{ s.doc.pk }}">{% endfor %}
+    <button type="submit" class="primario">⚡ Conciliar todas ({{ sugerencias|length }})</button>
+  </form>
+  {% endif %}
+</div>
+<form class="filtros" method="get">
+  <select name="tipo" onchange="this.form.submit()" aria-label="Tipo"><option value="">Cobros y pagos</option><option value="v" {% if g.tipo == 'v' %}selected{% endif %}>Cobros de ventas</option><option value="c" {% if g.tipo == 'c' %}selected{% endif %}>Pagos de compras</option></select>
+  <select name="motivo" onchange="this.form.submit()" aria-label="Motivo"><option value="">Todas</option><option value="descripcion" {% if g.motivo == 'descripcion' %}selected{% endif %}>Recomendadas por descripción</option><option value="monto" {% if g.motivo == 'monto' %}selected{% endif %}>Recomendadas solo por monto</option></select>
+</form>
+{% for s in sugerencias %}
+<div class="sugerencia">
+  <div class="lado">
+    <div class="arriba"><strong>{{ s.mov.fecha|date:"d M Y" }}</strong><span class="etiqueta {% if s.mov.es_abono %}etq-abono{% else %}etq-cargo{% endif %}">{% if s.mov.es_abono %}Abono{% else %}Cargo{% endif %}</span></div>
+    <div class="medio"><a href="{% url 'banco_movimiento' s.mov.pk %}?volver={{ request.get_full_path|urlencode }}">{{ s.mov.descripcion }}</a><span class="monto">{{ s.mov.monto|clp }}</span></div>
+    <div class="medio suave"><span>{{ s.mov.cuenta }}</span><span>Por asignar {{ s.mov.por_conciliar|clp }}</span></div>
+  </div>
+  <div class="flecha" aria-hidden="true">⇄</div>
+  <div class="lado">
+    <div class="arriba"><strong>{{ s.doc.fecha_emision|date:"d M Y" }}</strong><span class="etiqueta {% if s.tipo == 'v' %}etq-abono{% else %}etq-cargo{% endif %}">{% if s.tipo == 'v' %}Venta{% else %}Compra{% endif %} · {{ s.doc }}</span></div>
+    <div class="medio"><a href="{% if s.tipo == 'v' %}{% url 'documento' s.doc.pk %}{% else %}{% url 'compra' s.doc.pk %}{% endif %}">{% if s.tipo == 'v' %}{{ s.doc.cliente }}{% else %}{{ s.doc.proveedor }}{% endif %}</a><span class="monto">{{ s.doc.total|clp }}</span></div>
+    <div class="medio suave"><span>{% if s.tipo == 'v' %}{{ s.doc.cliente.rut_formateado }}{% else %}{{ s.doc.proveedor.rut_formateado }}{% endif %}</span><span>Saldo {% if s.tipo == 'v' %}por cobrar{% else %}por pagar{% endif %} {{ s.doc.saldo|clp }}</span></div>
+  </div>
+  <div class="decision">
+    <span class="motivo">⚡ {% if s.motivo == 'descripcion' %}Recomendado por descripción y monto{% else %}Recomendado por monto{% endif %}</span>
+    <form method="post">{% csrf_token %}<input type="hidden" name="accion" value="conciliar"><input type="hidden" name="par" value="{{ s.mov.pk }}:{{ s.tipo }}:{{ s.doc.pk }}"><button type="submit" class="primario chico">Conciliar</button></form>
+    <form method="post">{% csrf_token %}<input type="hidden" name="accion" value="rechazar"><input type="hidden" name="par" value="{{ s.mov.pk }}:{{ s.tipo }}:{{ s.doc.pk }}"><button type="submit" class="boton-enlace">Rechazar</button></form>
+  </div>
+</div>
+{% empty %}
+<div class="panel vacio">No hay sugerencias por ahora. Aparecen cuando un movimiento del banco tiene el mismo monto pendiente que una factura por cobrar o una compra por pagar.</div>
+{% endfor %}
+{% if sugerencias %}{% include "core/_paginas.html" %}{% endif %}
+{% endblock %}

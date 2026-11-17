@@ -1,0 +1,21 @@
+{% load formato %}
+<div class="panel conciliar-doc">
+  <h2>⚡ Conciliar con el banco</h2>
+  {% if movs_banco %}
+  <p class="suave" style="margin-top:-4px">{% if tipo == 'v' %}Abonos{% else %}Cargos{% endif %} del banco que podrían corresponder a {% if tipo == 'v' %}este cobro{% else %}este pago{% endif %}. Al conciliar se registra el pago con la fecha del banco.</p>
+  <ul>
+  {% for s in movs_banco %}
+    <li>
+      <span><strong>{{ s.mov.fecha|date:"d/m/Y" }}</strong> · {{ s.mov.descripcion }}<br><span class="suave">{{ s.mov.cuenta }} · por asignar {{ s.mov.por_conciliar|clp }}</span>
+        {% if s.exacto %}<span class="etiqueta e-ok">Mismo monto</span>{% endif %}{% if s.nombre %}<span class="etiqueta e-ok">Nombre coincide</span>{% endif %}</span>
+      <span class="num">{{ s.mov.monto|clp }}</span>
+      <form method="post" action="{% url 'conciliar_documento' tipo doc_pk %}">{% csrf_token %}<input type="hidden" name="movimiento" value="{{ s.mov.pk }}">
+        <input name="monto" value="{{ s.monto }}" inputmode="numeric" aria-label="Monto a conciliar">
+        <button type="submit" class="{% if forloop.first and s.exacto %}primario {% endif %}chico">Conciliar</button></form>
+    </li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p class="suave" style="margin:0">No hay {% if tipo == 'v' %}abonos{% else %}cargos{% endif %} pendientes del banco que calcen. Sube la cartola del período en <a href="{% url 'banco_importar' %}">Banco → Subir cartola</a>.</p>
+  {% endif %}
+</div>

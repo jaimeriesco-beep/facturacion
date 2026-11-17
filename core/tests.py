@@ -1924,6 +1924,63 @@ class FlujoDAPTests(Base):
         self.assertNotIn("Depósitos a plazo (DAP)", [n for n, _ in r.context["por_categoria"]["egresos"]])
 
 
+class RayoTests(Base):
+    def setUp(self):
+        super().setUp()
+        from .models import Compra, CuentaBancaria, MovimientoBancario, Proveedor
+        self.cuenta = CuentaBancaria.objects.create(sociedad=self.soc, banco="Banco de Chile", numero="1")
+        self.f1 = self.factura(folio=10, emision=date(2026, 11, 2))                       # 119.000 a Cliente Uno
+        self.f2 = self.factura(lineas=((1, 50000, False),), folio=11, emision=date(2026, 11, 2))   # 59.500
+        self.f3 = self.factura(lineas=((1, 50000, False),), folio=12, emision=date(2026, 11, 3))   # 59.500
+        prov = Proveedor.objects.create(sociedad=self.soc, rut="76192083-9", razon_social="Semillas del Sur SpA")
+        self.compra = Compra.objects.create(sociedad=self.soc, proveedor=prov, tipo=33, folio=5, periodo="2026-11",
+                                            fecha_emision=date(2026, 11, 1), neto=20000, iva=3800, total=23800)
+        mov = lambda d, m, t: MovimientoBancario.objects.create(  # noqa: E731
+            cuenta=self.cuenta, fecha=date(2026, 11, d), monto=m, descripcion=t, huella=t)
+        self.m_nombre = mov(5, 119000, "TRASPASO DE: CLIENTE UNO")
+        self.m_ambiguo = mov(6, 59500, "TRASPASO DE: OTRA PERSONA")   # dos facturas de 59.500: no se adivina
+        self.m_compra = mov(7, -23800, "TRASPASO A: SEMILLAS DEL SUR")
+        self.m_nada = mov(8, -777, "COMISION")
+
+    def test_sugiere_por_descripcion_y_monto_sin_adivinar_y_concilia_todas(self):
+        from .banco import sugerencias_automaticas
+        pares = {(s["mov"].pk, s["doc"].pk, s["motivo"]) for s in sugerencias_automaticas(self.soc)}
+        self.assertEqual(pares, {(self.m_nombre.pk, self.f1.pk, "descripcion"),
+                                 (self.m_compra.pk, self.compra.pk, "descripcion")})
+        r = self.client.get(reverse("banco_sugerencias"))
+        self.assertContains(r, "Conciliar todas (2)")
+        self.assertContains(self.client.get(reverse("inicio")), "2 sugerencias de conciliación")
+        self.client.post(reverse("banco_sugerencias"), {"accion": "conciliar", "par": [
+            f"{self.m_nombre.pk}:v:{self.f1.pk}", f"{self.m_compra.pk}:c:{self.compra.pk}"]})
+        self.assertEqual(Documento.objects.con_saldo().get(pk=self.f1.pk).saldo_a, 0)
+        from .models import Compra
+        self.assertEqual(Compra.objects.con_saldo().get(pk=self.compra.pk).saldo, 0)
+        self.assertEqual(sugerencias_automaticas(self.soc), [])
+
+    def test_rechazar_y_sugerencia_unica_por_monto(self):
+        from .banco import sugerencias_automaticas
+        self.f3.a_papelera()                                        # queda una sola factura de 59.500
+        s = {x["mov"].pk: x for x in sugerencias_automaticas(self.soc)}
+        self.assertEqual((s[self.m_ambiguo.pk]["doc"], s[self.m_ambiguo.pk]["motivo"]), (self.f2, "monto"))
+        self.client.post(reverse("banco_sugerencias"), {"accion": "rechazar", "par": f"{self.m_ambiguo.pk}:v:{self.f2.pk}"})
+        self.assertNotIn(self.m_ambiguo.pk, {x["mov"].pk for x in sugerencias_automaticas(self.soc)})
+
+    def test_conciliar_desde_la_factura_y_desde_la_compra(self):
+        r = self.client.get(reverse("documento", args=[self.f1.pk]))
+        self.assertEqual(r.context["movs_banco"][0]["mov"], self.m_nombre)
+        self.client.post(reverse("conciliar_documento", args=["v", self.f1.pk]),
+                         {"movimiento": self.m_nombre.pk, "monto": "119.000"})
+        self.assertEqual(Documento.objects.con_saldo().get(pk=self.f1.pk).saldo_a, 0)
+        r = self.client.get(reverse("compra", args=[self.compra.pk]))
+        self.assertEqual(r.context["movs_banco"][0]["mov"], self.m_compra)
+        self.client.post(reverse("conciliar_documento", args=["c", self.compra.pk]), {"movimiento": self.m_compra.pk})
+        self.m_compra.refresh_from_db()
+        self.assertEqual(self.m_compra.conciliaciones.count(), 1)
+        r = self.client.post(reverse("conciliar_documento", args=["v", self.f2.pk]), {"movimiento": self.m_nada.pk},
+                             follow=True)
+        self.assertContains(r, "Elige el movimiento")              # un cargo no paga una venta
+
+
 class CartolaSantanderTests(Base):
     def test_excel_con_cargo_y_abono_del_mas_reciente_al_mas_antiguo(self):
         import datetime as dt

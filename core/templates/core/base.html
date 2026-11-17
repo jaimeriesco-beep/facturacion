@@ -39,6 +39,13 @@
           {% endfor %}
         </select>
       </form>
+      {% if rayo %}
+      <a class="rayo{% if rayo.n %} con-sugerencias{% endif %}" href="{% url 'banco_sugerencias' %}" title="{% if rayo.n %}Ver {{ rayo.n }} sugerencia{{ rayo.n|pluralize }} de conciliación{% else %}Sin sugerencias de conciliación{% endif %}">
+        <span class="rayo-icono" aria-hidden="true">⚡</span>{% if rayo.n %}<span class="rayo-n">{{ rayo.n }}</span>{% endif %}
+        {% if rayo.avance is not None %}<span class="rayo-avance"><span>{{ rayo.avance }}% este mes</span><i><b style="width:{{ rayo.avance }}%"></b></i></span>{% endif %}
+        <span class="visualmente-oculto">Sugerencias de conciliación</span>
+      </a>
+      {% endif %}
       {% with nombre=request.user.get_full_name|default:request.user.username %}
       <details class="menu-perfil">
         <summary aria-label="Mi perfil"><span class="avatar" aria-hidden="true"><svg class="icono"><use href="{% static 'core/iconos.svg' %}#perfil"/></svg></span><span class="perfil-nombre">{{ nombre }}</span><span class="flecha" aria-hidden="true">▾</span></summary>

@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
-from . import marketing, resumen
+from . import banco, marketing, resumen
 from .paginas import paginar
 from . import inventario
 from .dte import servicio
@@ -36,7 +36,7 @@ from .dte.secretos import ErrorSecreto, cifrar, descifrar
 from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm, EnviarCorreoForm,
                     ImportarClientesForm, LineasFormSet, MarcarPagadoForm, PagoForm, ProductoForm, RecurrenteForm,
                     RecurrenteLineasFormSet, SociedadForm, UsuarioForm)
-from .models import (COMPROBANTE, COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
+from .models import (COMPROBANTE, COTIZACION, POR_COBRAR, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
                      NOTA_DEBITO, NOTAS, DIAS_AVISO, DIAS_PAPELERA,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, firma_de, hoy, perfil_de, purgar_papelera)
@@ -555,6 +555,9 @@ def documento_detalle(request, pk):
         "asociados": doc.asociados(),
         "emitir_form": EmitirForm(),
         "pago_form": PagoForm(documento=doc, initial={"monto": max(doc.saldo, 0)}),
+        "movs_banco": (banco.movimientos_para_documento(doc)
+                       if doc.estado == Documento.EMITIDO and doc.tipo in POR_COBRAR and not doc.es_prueba
+                       and doc.saldo > 0 and request.sociedad.cuentas.exists() else None),
         "NC": NOTA_CREDITO, "ND": NOTA_DEBITO})
 
 

@@ -576,3 +576,33 @@ tr:target td { background: var(--verde-claro); transition: background 1.5s; }
 .lista-archivos { list-style: none; padding: 0; margin: 10px 0 0; text-align: left; display: grid; gap: 4px; }
 .lista-archivos li { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--borde); border-radius: 6px; padding: 4px 4px 4px 10px; font-size: 13px; }
 .lista-archivos .nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Rayo: sugerencias de conciliación */
+.visualmente-oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.rayo { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; color: var(--suave); padding: 4px 8px; border-radius: 999px; position: relative; }
+.rayo:hover { background: #f0f2ec; text-decoration: none; }
+.rayo-icono { width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; background: #eef0eb; font-size: 15px; filter: grayscale(1); }
+.rayo.con-sugerencias .rayo-icono { background: #fdf1d6; filter: none; }
+.rayo-n { position: absolute; left: 30px; top: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--rojo); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.rayo-avance { display: grid; gap: 3px; font-size: 11.5px; }
+.rayo-avance i { display: block; width: 90px; height: 5px; border-radius: 3px; background: #e6e9e2; overflow: hidden; }
+.rayo-avance b { display: block; height: 100%; background: var(--verde); }
+@media (max-width: 700px) { .rayo-avance { display: none; } }
+.sugerencia { display: grid; grid-template-columns: 1fr 28px 1fr 150px; gap: 12px; align-items: stretch; padding: 14px; border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 12px; background: var(--panel); }
+.sugerencia .lado { border: 1px solid var(--borde); border-radius: 8px; padding: 12px 14px; display: grid; gap: 6px; }
+.sugerencia .lado .arriba { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.sugerencia .lado .medio { display: flex; justify-content: space-between; gap: 8px; }
+.sugerencia .lado .monto { font-weight: 700; white-space: nowrap; }
+.sugerencia .flecha { display: grid; place-items: center; color: var(--suave); font-size: 18px; }
+.sugerencia .decision { display: grid; align-content: center; gap: 6px; text-align: center; }
+.sugerencia .decision form { margin: 0; }
+.sugerencia .decision button { width: 100%; }
+.sugerencia .motivo { font-size: 12px; color: var(--suave); }
+.etq-cargo { background: var(--rojo-claro); color: var(--rojo); }
+.etq-abono { background: var(--verde-claro); color: var(--verde-oscuro); }
+.boton-enlace { background: none; border: 0; color: var(--suave); text-decoration: underline; padding: 2px; }
+@media (max-width: 900px) { .sugerencia { grid-template-columns: 1fr; } .sugerencia .flecha { transform: rotate(90deg); } }
+.conciliar-doc li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--borde); }
+.conciliar-doc li:last-child { border-bottom: 0; }
+.conciliar-doc ul { list-style: none; padding: 0; margin: 0; }
+.conciliar-doc form { display: flex; gap: 6px; align-items: center; margin: 0; }
+.conciliar-doc input { width: 110px; }

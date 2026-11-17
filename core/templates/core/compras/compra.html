@@ -41,6 +41,7 @@
         <button type="submit" class="primario">Registrar pago</button>
       </form>{% endif %}
     </div>
+    {% if movs_banco is not None %}{% include "core/_conciliar_doc.html" with tipo="c" doc_pk=c.pk %}{% endif %}
     {% endif %}
   </div>
   <aside>

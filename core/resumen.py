@@ -55,6 +55,23 @@ def periodos(vista, cantidad=None):
     return list(reversed(inicios))
 
 
+def emitidos(sociedad, desde):
+    """Documentos que cuentan como venta (los mismos que suman en los gráficos)."""
+    return (Documento.objects.filter(
+        sociedad=sociedad, estado=Documento.EMITIDO, es_prueba=False, fecha_emision__gte=desde)
+        .exclude(tipo__in=(GUIA, COTIZACION)).select_related("cliente"))
+
+
+def pagos(sociedad, desde):
+    return (Pago.objects.filter(documento__sociedad=sociedad, documento__es_prueba=False, fecha__gte=desde)
+            .select_related("documento", "documento__cliente"))
+
+
+def compras(sociedad, desde):
+    from .models import Compra
+    return Compra.objects.filter(sociedad=sociedad, fecha_emision__gte=desde).select_related("categoria", "proveedor")
+
+
 def calcular(sociedad, vista):
     if vista not in VISTAS:
         vista = "mes"
@@ -65,10 +82,7 @@ def calcular(sociedad, vista):
     ventas, facturado, cobrado, documentos = [0] * n, [0] * n, [0] * n, [0] * n
     por_cliente = defaultdict(int)
 
-    emitidos = (Documento.objects.filter(
-        sociedad=sociedad, estado=Documento.EMITIDO, es_prueba=False, fecha_emision__gte=desde)
-        .exclude(tipo__in=(GUIA, COTIZACION)).select_related("cliente"))
-    for d in emitidos:
+    for d in emitidos(sociedad, desde):
         i = indice.get(_inicio_de(d.fecha_emision, vista))
         if i is None:
             continue
@@ -79,8 +93,7 @@ def calcular(sociedad, vista):
             documentos[i] += 1
         por_cliente[d.cliente] += signo * (d.neto + d.exento)
 
-    for p in Pago.objects.filter(documento__sociedad=sociedad, documento__es_prueba=False,
-                                 fecha__gte=desde):
+    for p in pagos(sociedad, desde):
         i = indice.get(_inicio_de(p.fecha, vista))
         if i is not None:
             cobrado[i] += p.monto
@@ -88,7 +101,7 @@ def calcular(sociedad, vista):
     from .models import Compra
     gastos = [0] * n
     por_categoria = defaultdict(int)
-    for c in Compra.objects.filter(sociedad=sociedad, fecha_emision__gte=desde).select_related("categoria"):
+    for c in compras(sociedad, desde):
         i = indice.get(_inicio_de(c.fecha_emision, vista))
         if i is None:
             continue
@@ -100,7 +113,9 @@ def calcular(sociedad, vista):
     top = clientes[:5]
     otros = sum(v for _, v in clientes[5:])
     return {
-        "vista": vista, "vistas": VISTAS, "rango": VISTAS[vista][1],
+        "vista": vista, "vistas": VISTAS, "desde": desde, "inicios": inicios,
+        "todas_categorias": sorted(((n, v) for n, v in por_categoria.items() if v), key=lambda x: -x[1]),
+        "todos_clientes": clientes, "rango": VISTAS[vista][1],
         "rotulo_actual": ACTUAL[vista], "rotulo_anterior": ANTERIOR[vista],
         "actual": ventas[-1], "anterior": ventas[-2] if n > 1 else 0,
         "docs_actual": documentos[-1],
@@ -130,11 +145,16 @@ def _rango_texto(inicio, vista):
     return f"Año {inicio.year}"
 
 
+TRAMOS = ["Por vencer", "1 a 30 días", "31 a 60 días", "61 a 90 días", "Más de 90 días"]
+
+
+def tramo(dias):
+    return 0 if dias <= 0 else min((dias - 1) // 30 + 1, 4)
+
+
 def antiguedad(sociedad):
     """Saldo por cobrar según días de atraso."""
-    tramos = ["Por vencer", "1 a 30 días", "31 a 60 días", "61 a 90 días", "Más de 90 días"]
     montos = [0] * 5
     for d in sociedad.documentos.por_cobrar():
-        dias = d.dias_vencido
-        montos[0 if dias <= 0 else min((dias - 1) // 30 + 1, 4)] += d.saldo
-    return {"etiquetas": tramos, "valores": montos}
+        montos[tramo(d.dias_vencido)] += d.saldo
+    return {"etiquetas": TRAMOS, "valores": montos}

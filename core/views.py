@@ -146,6 +146,20 @@ def inicio(request):
     })
 
 
+@con_sociedad
+def inicio_descargar(request, grafico):
+    """Excel de un gráfico del Inicio: tabla, gráfico y documentos considerados."""
+    from . import descargas_inicio
+    resultado = descargas_inicio.generar(request.sociedad, grafico, request.GET.get("vista", "mes"))
+    if resultado is None:
+        raise Http404
+    nombre, contenido = resultado
+    respuesta = HttpResponse(contenido,
+                             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    respuesta["Content-Disposition"] = f'attachment; filename="{quote(nombre)}.xlsx"'
+    return respuesta
+
+
 @require_POST
 @login_required
 def cambiar_sociedad(request):

@@ -1,0 +1,6 @@
+<details class="descargar-grafico"><summary class="boton chico" aria-label="Descargar {{ titulo }}"><svg class="icono" aria-hidden="true"><use href="{% load static %}{% static 'core/iconos.svg' %}#descargar"/></svg>Descargar</summary>
+  <div class="menu-descarga">
+    <a href="{% url 'inicio_descargar' clave %}?vista={{ vista }}"><strong>Excel</strong><span>Gráfico, tabla y documentos considerados</span></a>
+    <button type="button" data-png="{{ id }}" data-titulo="{{ titulo }}"><strong>Imagen PNG</strong><span>El gráfico tal como se ve</span></button>
+  </div>
+</details>

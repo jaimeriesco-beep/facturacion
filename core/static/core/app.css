@@ -547,3 +547,20 @@ nav.selector-vista a { white-space: nowrap; }
 .paginas { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 6px 6px; font-size: 13px; }
 .paginas-botones { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .paginas .boton.activo { background: var(--verde); border-color: var(--verde); color: #fff; }
+
+/* Descarga de gráficos del Inicio */
+.cabeza-acciones { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.descargar-grafico { position: relative; margin: 0; }
+.descargar-grafico > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; color: var(--suave); }
+.descargar-grafico > summary::-webkit-details-marker { display: none; }
+.descargar-grafico > summary .icono { width: 15px; height: 15px; }
+.descargar-grafico[open] > summary { background: #f0f2ec; color: var(--texto); }
+.menu-descarga { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 270px; background: var(--panel);
+  border: 1px solid var(--borde); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 6px; display: grid; }
+.menu-descarga a, .menu-descarga button { display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px;
+  background: none; color: var(--texto); font-size: 14px; cursor: pointer; }
+.menu-descarga a:hover, .menu-descarga button:hover { background: var(--verde-claro); text-decoration: none; }
+.menu-descarga span { font-size: 12px; color: var(--suave); }
+.grafico-cabeza { flex-wrap: nowrap; }
+.grafico-cabeza > div:first-child { flex: 1; min-width: 0; }
+.grafico-cabeza .leyenda { margin: -4px 0 10px; }

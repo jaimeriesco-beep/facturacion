@@ -26,7 +26,7 @@
 </div>
 
 <div class="panel">
-  <div class="grafico-cabeza"><div><h2>Ventas netas</h2><p class="suave">{{ rango }} · sin IVA, descontadas las notas de crédito · total {{ total_rango|clp }}</p></div></div>
+  <div class="grafico-cabeza"><div><h2>Ventas netas</h2><p class="suave">{{ rango }} · sin IVA, descontadas las notas de crédito · total {{ total_rango|clp }}</p></div>{% include "core/_descargar_grafico.html" with clave="ventas" id="g-ventas" titulo="Ventas netas" %}</div>
   <div id="g-ventas" class="grafico"></div>
   <details class="datos-grafico"><summary>Ver datos en tabla</summary>
     <table><thead><tr><th>Período</th><th class="num">Ventas netas</th><th class="num">Facturado</th><th class="num">Cobrado</th></tr></thead><tbody>
@@ -36,23 +36,22 @@
 
 <div class="dos">
   <div class="panel">
-    <div class="grafico-cabeza"><div><h2>Facturado y cobrado</h2><p class="suave">IVA incluido · cobrado {{ cobrado_rango|clp }} de {{ facturado_rango|clp }}</p></div>
-      <div class="leyenda"><span><i style="background:#2f8a55"></i>Facturado</span><span><i style="background:#2a78d6"></i>Cobrado</span></div></div>
+    <div class="grafico-cabeza"><div><h2>Facturado y cobrado</h2><p class="suave">IVA incluido · cobrado {{ cobrado_rango|clp }} de {{ facturado_rango|clp }}</p><div class="leyenda"><span><i style="background:#2f8a55"></i>Facturado</span><span><i style="background:#2a78d6"></i>Cobrado</span></div></div>{% include "core/_descargar_grafico.html" with clave="cobros" id="g-cobros" titulo="Facturado y cobrado" %}</div>
     <div id="g-cobros" class="grafico"></div>
   </div>
   <div class="panel">
-    <div class="grafico-cabeza"><div><h2>Principales clientes</h2><p class="suave">Ventas netas · {{ rango|lower }}</p></div></div>
+    <div class="grafico-cabeza"><div><h2>Principales clientes</h2><p class="suave">Ventas netas · {{ rango|lower }}</p></div>{% include "core/_descargar_grafico.html" with clave="clientes" id="g-clientes" titulo="Principales clientes" %}</div>
     <div id="g-clientes" class="grafico"></div>
   </div>
 </div>
 
 <div class="dos">
   <div class="panel">
-    <div class="grafico-cabeza"><div><h2>Antigüedad de la cobranza</h2><p class="suave">Saldo pendiente según días de atraso</p></div></div>
+    <div class="grafico-cabeza"><div><h2>Antigüedad de la cobranza</h2><p class="suave">Saldo pendiente según días de atraso</p></div>{% include "core/_descargar_grafico.html" with clave="antiguedad" id="g-antiguedad" titulo="Antigüedad de la cobranza" %}</div>
     <div id="g-antiguedad" class="grafico"></div>
   </div>
   <div class="panel">
-    <div class="grafico-cabeza"><div><h2>En qué se gasta</h2><p class="suave">Compras netas por categoría · {{ rango|lower }}</p></div><a href="{% url 'compras' %}">Ver compras</a></div>
+    <div class="grafico-cabeza"><div><h2>En qué se gasta</h2><p class="suave">Compras netas por categoría · {{ rango|lower }}</p></div><div class="cabeza-acciones"><a href="{% url 'compras' %}">Ver compras</a>{% if hay_compras %}{% include "core/_descargar_grafico.html" with clave="categorias" id="g-categorias" titulo="En qué se gasta" %}{% endif %}</div></div>
     {% if hay_compras %}<div id="g-categorias" class="grafico"></div>
     {% else %}<div class="pronto-panel"><p>Importa las compras desde el SII para ver tus gastos y el margen.</p><a class="boton" href="{% url 'compras_importar' %}">Importar compras</a></div>{% endif %}
   </div>
@@ -60,8 +59,7 @@
 
 {% if hay_compras %}
 <div class="panel">
-  <div class="grafico-cabeza"><div><h2>Ventas y gastos</h2><p class="suave">Sin IVA · gastos {{ gastos_rango|clp }} · margen {{ margen_rango|clp }}</p></div>
-    <div class="leyenda"><span><i style="background:#2f8a55"></i>Ventas netas</span><span><i style="background:#c2410c"></i>Gastos</span></div></div>
+  <div class="grafico-cabeza"><div><h2>Ventas y gastos</h2><p class="suave">Sin IVA · gastos {{ gastos_rango|clp }} · margen {{ margen_rango|clp }}</p><div class="leyenda"><span><i style="background:#2f8a55"></i>Ventas netas</span><span><i style="background:#c2410c"></i>Gastos</span></div></div>{% include "core/_descargar_grafico.html" with clave="gastos" id="g-gastos" titulo="Ventas y gastos" %}</div>
   <div id="g-gastos" class="grafico"></div>
 </div>
 {% endif %}

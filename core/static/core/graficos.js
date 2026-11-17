@@ -117,6 +117,61 @@
     if (q("g-antiguedad")) barras(q("g-antiguedad"),
       g.antiguedad.etiquetas.map((nombre, i) => ({ nombre, valor: g.antiguedad.valores[i] })), AZUL);
   }
+  // Imagen PNG del gráfico: título, subtítulo, leyenda y el SVG con sus estilos incorporados.
+  const LEYENDAS = {
+    "g-cobros": [["Facturado", VERDE], ["Cobrado", AZUL]],
+    "g-gastos": [["Ventas netas", VERDE], ["Gastos", NARANJO]],
+  };
+  function png(id, titulo) {
+    const cont = document.getElementById(id), svg = cont && cont.querySelector("svg");
+    if (!svg) return;
+    const panel = cont.closest(".panel"), sub = panel.querySelector(".grafico-cabeza p");
+    const copia = svg.cloneNode(true), originales = svg.querySelectorAll("*"), copias = copia.querySelectorAll("*");
+    originales.forEach((o, i) => {
+      const c = copias[i], st = getComputedStyle(o);
+      if (o.classList.contains("zona")) { c.remove(); return; }
+      ["fill", "stroke", "stroke-width", "font-size", "font-family", "font-weight"].forEach((p) => c.style.setProperty(p, st.getPropertyValue(p)));
+    });
+    const W = svg.clientWidth, H = svg.clientHeight;
+    copia.setAttribute("width", W); copia.setAttribute("height", H);
+    const leyenda = LEYENDAS[id] || [], cabeza = 64 + (leyenda.length ? 24 : 0), margen = 24, escala = 2;
+    const lienzo = document.createElement("canvas");
+    lienzo.width = (W + margen * 2) * escala; lienzo.height = (H + cabeza + margen + 18) * escala;
+    const ctx = lienzo.getContext("2d");
+    ctx.scale(escala, escala);
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W + margen * 2, H + cabeza + margen + 18);
+    const fuente = getComputedStyle(document.body).fontFamily;
+    ctx.fillStyle = "#1f2a24"; ctx.font = `600 17px ${fuente}`; ctx.fillText(titulo, margen, margen + 14);
+    ctx.fillStyle = "#66736b"; ctx.font = `13px ${fuente}`;
+    ctx.fillText((sub ? sub.textContent.trim() : "") , margen, margen + 36);
+    let x = margen;
+    leyenda.forEach(([nombre, color]) => {
+      ctx.fillStyle = color; ctx.fillRect(x, margen + 50, 10, 10);
+      ctx.fillStyle = "#66736b"; ctx.fillText(nombre, x + 16, margen + 59);
+      x += ctx.measureText(nombre).width + 34;
+    });
+    const sociedad = document.querySelector("select[name=sociedad] option:checked");
+    ctx.font = `11px ${fuente}`; ctx.fillStyle = "#9aa39c";
+    ctx.fillText((sociedad ? sociedad.textContent.trim() + " · " : "") + new Date().toLocaleDateString("es-CL"),
+                 margen, H + cabeza + margen + 8);
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, margen, cabeza, W, H);
+      const a = document.createElement("a");
+      a.download = titulo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-") + ".png";
+      a.href = lienzo.toDataURL("image/png");
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(copia));
+  }
+  document.querySelectorAll("[data-png]").forEach((b) => b.addEventListener("click", () => {
+    png(b.dataset.png, b.dataset.titulo);
+    b.closest("details").open = false;
+  }));
+  document.addEventListener("click", (e) => {
+    document.querySelectorAll(".descargar-grafico[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+  });
+
   dibujar();
   let espera;
   addEventListener("resize", () => { clearTimeout(espera); espera = setTimeout(dibujar, 150); });

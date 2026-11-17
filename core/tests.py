@@ -1799,6 +1799,33 @@ class PaginacionTests(Base):
         self.assertEqual(self.client.get(reverse("banco"), {"mes": "2026-11"}).context["total"], 3)
 
 
+class DescargaGraficosTests(Base):
+    def test_cada_grafico_del_inicio_se_descarga_con_datos_y_grafico(self):
+        import io
+        from openpyxl import load_workbook
+        doc = self.factura(folio=10)
+        esperadas = {"ventas": ["Gráfico", "Documentos considerados"],
+                     "cobros": ["Gráfico", "Documentos considerados", "Pagos considerados"],
+                     "clientes": ["Gráfico", "Documentos considerados"],
+                     "antiguedad": ["Gráfico", "Documentos por cobrar"],
+                     "categorias": ["Gráfico", "Compras consideradas"],
+                     "gastos": ["Gráfico", "Documentos considerados", "Compras consideradas"]}
+        for clave, hojas in esperadas.items():
+            r = self.client.get(reverse("inicio_descargar", args=[clave]), {"vista": "mes"})
+            self.assertEqual(r.status_code, 200, clave)
+            libro = load_workbook(io.BytesIO(r.content))
+            self.assertEqual(libro.sheetnames, hojas, clave)
+        libro = load_workbook(io.BytesIO(self.client.get(reverse("inicio_descargar", args=["ventas"])).content))
+        hoja = libro["Gráfico"]
+        self.assertEqual(len(hoja._charts), 1)
+        valores = [f[1] for f in hoja.iter_rows(min_row=5, values_only=True)]
+        self.assertEqual(valores[-1], 100000)                     # total del período = venta neta de la factura
+        det = libro["Documentos considerados"]
+        self.assertEqual([c for c in next(det.iter_rows(min_row=5, values_only=True))][2], 10)
+        self.assertEqual(self.client.get(reverse("inicio_descargar", args=["otro"])).status_code, 404)
+        self.assertContains(self.client.get(reverse("inicio")), "Imagen PNG")
+
+
 class CartolaSantanderTests(Base):
     def test_excel_con_cargo_y_abono_del_mas_reciente_al_mas_antiguo(self):
         import datetime as dt

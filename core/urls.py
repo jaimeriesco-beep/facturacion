@@ -8,6 +8,7 @@ from . import vistas_inventario as vi
 
 urlpatterns = [
     path("", v.inicio, name="inicio"),
+    path("inicio/descargar/<slug:grafico>/", v.inicio_descargar, name="inicio_descargar"),
     path("sociedad/cambiar/", v.cambiar_sociedad, name="cambiar_sociedad"),
     path("sociedades/", v.sociedades, name="sociedades"),
     path("sociedades/nueva/", v.sociedad_form, name="sociedad_nueva"),

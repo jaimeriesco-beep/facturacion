@@ -1,5 +1,6 @@
 """Pantallas del módulo de Compras."""
 from datetime import date, timedelta
+from urllib.parse import quote
 
 from django import forms
 from django.contrib import messages
@@ -10,7 +11,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from . import compras as rcv
-from .paginas import paginar
+from .paginas import paginar, volver_seguro
 from .forms import Fecha, FormBase
 from .models import (TIPOS_COMPRA, CategoriaGasto, Compra, Pago, PagoCompra, Proveedor,
                      categorias_de, hoy)
@@ -276,6 +277,8 @@ def compra_nueva(request):
 def compra(request, pk):
     soc = request.sociedad
     c = get_object_or_404(Compra.objects.select_related("proveedor", "categoria"), pk=pk, sociedad=soc)
+    volver = volver_seguro(request, reverse("compras"), f"{reverse('compras')}?periodo={c.periodo}")
+    detalle = f"{reverse('compra', args=[pk])}?volver={quote(volver)}"
     form = CompraForm(request.POST if request.POST.get("accion") == "datos" else None, instance=c)
     if request.method == "POST":
         accion = request.POST.get("accion")
@@ -284,8 +287,8 @@ def compra(request, pk):
             if request.POST.get("recordar") and c.categoria:
                 c.proveedor.categoria = c.categoria
                 c.proveedor.save(update_fields=["categoria"])
-            messages.success(request, "Compra actualizada.")
-            return redirect("compra", pk=pk)
+            messages.success(request, f"{c} de {c.proveedor} guardada como «{c.categoria or 'sin categoría'}».")
+            return redirect(f"{volver}#compra-{pk}")
         if accion == "pago":
             try:
                 monto = int(request.POST.get("monto", "").replace(".", "").replace("$", "").strip())
@@ -300,9 +303,9 @@ def compra(request, pk):
                     PagoCompra.objects.create(compra=c, monto=monto, fecha=fecha, medio=medio,
                                               nota=request.POST.get("nota", "")[:120])
                     messages.success(request, f"Pago de {formatear_clp(monto)} registrado.")
-            return redirect("compra", pk=pk)
+            return redirect(detalle)
     return render(request, "core/compras/compra.html", {
-        "c": c, "form": form, "pagos": c.pagos.all(), "medios": Pago.MEDIOS, "hoy": hoy(),
+        "c": c, "form": form, "volver": volver, "pagos": c.pagos.all(), "medios": Pago.MEDIOS, "hoy": hoy(),
         "otras": soc.compras.filter(proveedor=c.proveedor).exclude(pk=c.pk)[:8]})
 
 

@@ -1,5 +1,6 @@
 """Pantallas del módulo Banco: cartolas, categorías y conciliación."""
 import re
+from urllib.parse import quote
 from datetime import date
 
 from django import forms
@@ -11,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from . import banco
-from .paginas import paginar
+from .paginas import paginar, volver_seguro
 from .models import (GRUPOS_BANCO, CategoriaBanco, Compra, CuentaBancaria, Documento, MovimientoBancario,
                      ReglaBanco, categorias_banco_de, hoy)
 from .utils import MESES, formatear_clp
@@ -166,6 +167,10 @@ def importar(request):
 def movimiento(request, pk):
     soc = request.sociedad
     m = get_object_or_404(_movimientos(soc), pk=pk)
+    volver = volver_seguro(request, reverse("banco"),
+                           f"{reverse('banco')}?cuenta={m.cuenta_id}&mes={m.fecha:%Y-%m}")
+    al_listado = f"{volver}#mov-{pk}"
+    detalle = f"{reverse('banco_movimiento', args=[pk])}?volver={quote(volver)}"
     if request.method == "POST":
         que = request.POST.get("accion")
         if que == "conciliar":
@@ -188,7 +193,7 @@ def movimiento(request, pk):
                 n = banco.conciliar(m, asignaciones)
                 messages.success(request, f"Movimiento conciliado con {n} documento{'s' if n > 1 else ''}; "
                                           f"{'los cobros' if m.es_abono else 'los pagos'} quedaron registrados.")
-                return redirect(request.POST.get("siguiente") or reverse("banco_movimiento", args=[pk]))
+                return redirect(al_listado)
         elif que == "deshacer":
             banco.deshacer(m)
             messages.success(request, "Conciliación deshecha: se eliminaron los pagos que había creado.")
@@ -209,11 +214,13 @@ def movimiento(request, pk):
                 messages.success(request, f"Categoría guardada y regla creada: lo que contenga «{texto}» irá a "
                                           f"«{m.categoria}». Se aplicó a {n} movimiento{'s' if n != 1 else ''} más.")
             else:
-                messages.success(request, "Categoría guardada.")
+                messages.success(request, f"Categoría guardada: {m.descripcion[:60]} → {m.categoria or 'sin categoría'}.")
+            return redirect(al_listado)
         elif que == "ignorar":
             m.ignorado = not m.ignorado
             m.save(update_fields=["ignorado"])
-        return redirect("banco_movimiento", pk=pk)
+            return redirect(al_listado)
+        return redirect(detalle)
 
     sugeridas = banco.sugerencias(m) if m.por_conciliar else []
     sugeridos_ids = {(isinstance(s["doc"], Documento), s["doc"].pk) for s in sugeridas}
@@ -228,7 +235,7 @@ def movimiento(request, pk):
     return render(request, "core/banco/movimiento.html", {
         "m": m, "sugeridas": sugeridas, "otros": otros, "categorias": categorias_banco_de(soc),
         "conciliaciones": m.conciliaciones.select_related("pago__documento", "pago_compra__compra"),
-        "regla_sugerida": banco.texto_regla(m.descripcion), "siguiente": siguiente})
+        "regla_sugerida": banco.texto_regla(m.descripcion), "siguiente": siguiente, "volver": volver})
 
 
 # --------------------------------------------------- Categorías, reglas y cuentas

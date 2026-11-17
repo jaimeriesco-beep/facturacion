@@ -1826,6 +1826,30 @@ class DescargaGraficosTests(Base):
         self.assertContains(self.client.get(reverse("inicio")), "Imagen PNG")
 
 
+class VolverAlListadoTests(Base):
+    def test_guardar_categoria_vuelve_al_listado_con_sus_filtros(self):
+        from .models import Compra, CuentaBancaria, MovimientoBancario, Proveedor, categorias_banco_de, categorias_de
+        cuenta = CuentaBancaria.objects.create(sociedad=self.soc, banco="Banco de Chile", numero="123")
+        m = MovimientoBancario.objects.create(cuenta=cuenta, fecha=date(2026, 11, 3), monto=-5000,
+                                              descripcion="COMISION", huella="h1")
+        cat = categorias_banco_de(self.soc).first()
+        lista = reverse("banco") + "?cuenta=%d&mes=todos&estado=por_revisar&pagina=2" % cuenta.pk
+        self.assertContains(self.client.get(lista.replace("&pagina=2", "")), "volver=")
+        r = self.client.post(reverse("banco_movimiento", args=[m.pk]),
+                             {"accion": "categoria", "categoria": cat.pk, "nota": "", "volver": lista})
+        self.assertRedirects(r, lista + f"#mov-{m.pk}", fetch_redirect_response=False)
+        r = self.client.post(reverse("banco_movimiento", args=[m.pk]),
+                             {"accion": "categoria", "categoria": cat.pk, "volver": "https://otro.sitio/"})
+        self.assertTrue(r["Location"].startswith(reverse("banco") + "?cuenta="))
+        prov = Proveedor.objects.create(sociedad=self.soc, rut="76192083-9", razon_social="Semillas")
+        c = Compra.objects.create(sociedad=self.soc, proveedor=prov, tipo=33, folio=1, periodo="2026-11",
+                                  fecha_emision=date(2026, 11, 1), neto=1000, iva=190, total=1190)
+        volver = reverse("compras") + "?categoria=sin&pagina=3"
+        r = self.client.post(reverse("compra", args=[c.pk]), {"accion": "datos", "volver": volver,
+                                                              "categoria": categorias_de(self.soc).first().pk})
+        self.assertRedirects(r, volver + f"#compra-{c.pk}", fetch_redirect_response=False)
+
+
 class CartolaSantanderTests(Base):
     def test_excel_con_cargo_y_abono_del_mas_reciente_al_mas_antiguo(self):
         import datetime as dt

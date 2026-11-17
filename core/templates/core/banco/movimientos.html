@@ -42,19 +42,19 @@
     <thead><tr><th class="c-sel"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todos"></th><th>Fecha</th><th>Descripción</th><th class="num">Cargo</th><th class="num">Abono</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
     <tbody>
     {% for m in movimientos %}
-      <tr class="{% if m.estado == 'ignorado' %}inactivo{% endif %}">
+      <tr id="mov-{{ m.pk }}" class="{% if m.estado == 'ignorado' %}inactivo{% endif %}">
         <td class="c-sel"><input type="checkbox" class="sel-mov" value="{{ m.pk }}" aria-label="Seleccionar movimiento"></td>
         <td data-rotulo="Fecha">{% if mes and mes != "todos" %}{{ m.fecha|date:"d/m" }}{% else %}{{ m.fecha|date:"d/m/y" }}{% endif %}</td>
-        <td data-rotulo="Descripción"><a href="{% url 'banco_movimiento' m.pk %}" class="enlace-suave">{{ m.descripcion }}</a>{% if m.provisorio %} <span class="etiqueta e-prueba" title="De la consulta de últimos movimientos; se confirma al subir la cartola definitiva">Provisorio</span>{% endif %}{% if m.nota %}<div class="ayuda" style="margin:0">{{ m.nota }}</div>{% endif %}</td>
+        <td data-rotulo="Descripción"><a href="{% url 'banco_movimiento' m.pk %}?volver={{ request.get_full_path|urlencode }}" class="enlace-suave">{{ m.descripcion }}</a>{% if m.provisorio %} <span class="etiqueta e-prueba" title="De la consulta de últimos movimientos; se confirma al subir la cartola definitiva">Provisorio</span>{% endif %}{% if m.nota %}<div class="ayuda" style="margin:0">{{ m.nota }}</div>{% endif %}</td>
         <td class="num" data-rotulo="Cargo">{% if m.monto < 0 %}{{ m.monto|clp|slice:"1:" }}{% endif %}</td>
         <td class="num monto-abono" data-rotulo="Abono">{% if m.monto > 0 %}{{ m.monto|clp }}{% endif %}</td>
         <td class="num suave" data-rotulo="Saldo">{{ m.saldo|clp }}</td>
         <td data-rotulo="Estado">
           {% if m.estado == 'conciliado' %}<span class="plazo p-al-dia">Conciliado</span>{% if m.categoria %}<div class="ayuda" style="margin:2px 0 0">{{ m.categoria }}</div>{% endif %}
-          {% elif m.estado == 'parcial' %}<a class="plazo p-pronto" href="{% url 'banco_movimiento' m.pk %}">Parcial · faltan {{ m.por_conciliar|clp }}</a>
+          {% elif m.estado == 'parcial' %}<a class="plazo p-pronto" href="{% url 'banco_movimiento' m.pk %}?volver={{ request.get_full_path|urlencode }}">Parcial · faltan {{ m.por_conciliar|clp }}</a>
           {% elif m.estado == 'categorizado' %}<span class="etiqueta">{{ m.categoria }}</span>
           {% elif m.estado == 'ignorado' %}<span class="suave">Sin revisión</span>
-          {% else %}<a class="boton chico" href="{% url 'banco_movimiento' m.pk %}">{% if m.monto > 0 %}Conciliar cobro{% else %}Conciliar pago{% endif %}</a>{% endif %}
+          {% else %}<a class="boton chico" href="{% url 'banco_movimiento' m.pk %}?volver={{ request.get_full_path|urlencode }}">{% if m.monto > 0 %}Conciliar cobro{% else %}Conciliar pago{% endif %}</a>{% endif %}
         </td>
       </tr>
     {% endfor %}

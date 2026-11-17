@@ -10,3 +10,14 @@ def paginar(request, filas, por_pagina=POR_PAGINA):
     resto = request.GET.copy()
     resto.pop("pagina", None)
     return pagina, {"pagina": pagina, "qs_sin_pagina": resto.urlencode()}
+
+
+def volver_seguro(request, prefijo, defecto):
+    """Dirección del listado desde el que se abrió un detalle (con sus filtros y página).
+
+    Solo acepta rutas internas que empiezan con `prefijo`, para no redirigir fuera de la app.
+    """
+    destino = request.POST.get("volver") or request.GET.get("volver") or ""
+    if destino.startswith(prefijo) and not destino.startswith("//") and "\\" not in destino:
+        return destino
+    return defecto

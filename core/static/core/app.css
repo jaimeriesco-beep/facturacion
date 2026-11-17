@@ -564,3 +564,4 @@ nav.selector-vista a { white-space: nowrap; }
 .grafico-cabeza { flex-wrap: nowrap; }
 .grafico-cabeza > div:first-child { flex: 1; min-width: 0; }
 .grafico-cabeza .leyenda { margin: -4px 0 10px; }
+tr:target td { background: var(--verde-claro); transition: background 1.5s; }

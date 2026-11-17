@@ -2,7 +2,7 @@
 {% load formato static %}
 {% block titulo %}Movimiento del {{ m.fecha|date:"d/m/Y" }}{% endblock %}
 {% block contenido %}
-<p class="miga"><a href="{% url 'banco' %}?cuenta={{ m.cuenta_id }}&amp;mes={{ m.fecha|date:'Y-m' }}">← Movimientos de {{ m.cuenta }}</a></p>
+<p class="miga"><a href="{{ volver }}#mov-{{ m.pk }}">← Movimientos de {{ m.cuenta }}</a></p>
 <div class="panel mov-cabeza">
   <div>
     <div class="suave">{{ m.fecha|date:"l d/m/Y"|capfirst }} · {{ m.cuenta }}{% if m.documento %} · doc. {{ m.documento }}{% endif %}{% if m.sucursal %} · {{ m.sucursal }}{% endif %}</div>
@@ -20,15 +20,14 @@
     {% else %}<td><a href="{% url 'compra' c.pago_compra.compra_id %}">{{ c.pago_compra.compra }}</a></td><td>{{ c.pago_compra.compra.proveedor }}</td>{% endif %}
     <td class="num">{{ c.monto|clp }}</td></tr>{% endfor %}
   </tbody></table>
-  <form method="post" style="margin-top:12px" onsubmit="return confirm('¿Deshacer la conciliación? Se eliminan los pagos que se registraron al conciliar.')">{% csrf_token %}<input type="hidden" name="accion" value="deshacer"><button type="submit">Deshacer conciliación</button></form>
+  <form method="post" style="margin-top:12px" onsubmit="return confirm('¿Deshacer la conciliación? Se eliminan los pagos que se registraron al conciliar.')">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="deshacer"><button type="submit">Deshacer conciliación</button></form>
 </div>
 {% endif %}
 
 <div class="perfil-grid">
   <div>
   {% if m.por_conciliar %}
-  <form method="post" class="panel" id="form-conciliar">{% csrf_token %}<input type="hidden" name="accion" value="conciliar">
-    {% if siguiente %}<input type="hidden" name="siguiente" value="{% url 'banco_movimiento' siguiente.pk %}">{% endif %}
+  <form method="post" class="panel" id="form-conciliar">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="conciliar">
     <h2>{% if m.es_abono %}¿Qué factura se está cobrando?{% else %}¿Qué compra se está pagando?{% endif %}</h2>
     <p class="suave" style="margin-top:-4px">Marca uno o varios documentos. Al conciliar se registra {% if m.es_abono %}el cobro en la factura{% else %}el pago en la compra{% endif %} con la fecha del banco. Por conciliar: <strong>{{ m.por_conciliar|clp }}</strong>.</p>
     {% if sugeridas %}
@@ -62,7 +61,7 @@
   {% endif %}
   </div>
   <aside>
-    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="categoria">
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="categoria">
       <h2>Categoría</h2>
       <p class="suave" style="margin-top:-4px">Para lo que no es una factura: sueldos, impuestos, contribuciones, comisiones…</p>
       <div class="campo"><label for="m-cat">Categoría</label><select id="m-cat" name="categoria"><option value="">Sin categoría</option>{% for c in categorias %}<option value="{{ c.pk }}" {% if c.pk == m.categoria_id %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
@@ -70,11 +69,11 @@
       <div class="campo" style="margin-top:10px"><label for="m-regla">Crear regla <span class="suave">(opcional)</span></label><input id="m-regla" name="regla" maxlength="80" placeholder="{{ regla_sugerida }}"><p class="ayuda">Los movimientos cuya descripción contenga este texto irán siempre a esta categoría. Ej.: «{{ regla_sugerida }}».</p></div>
       <div class="acciones" style="margin-top:12px"><button class="primario" type="submit">Guardar</button></div>
     </form>
-    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="ignorar">
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="ignorar">
       <p class="suave" style="margin:0 0 8px">{% if m.ignorado %}Este movimiento está marcado como «no requiere revisión».{% else %}¿No hay nada que conciliar ni categorizar?{% endif %}</p>
       <button type="submit">{% if m.ignorado %}Volver a revisar{% else %}No requiere revisión{% endif %}</button>
     </form>
-    {% if siguiente %}<p><a href="{% url 'banco_movimiento' siguiente.pk %}">Siguiente por revisar →</a></p>{% endif %}
+    {% if siguiente %}<p><a href="{% url 'banco_movimiento' siguiente.pk %}?volver={{ volver|urlencode }}">Siguiente por revisar →</a></p>{% endif %}
   </aside>
 </div>
 {% endblock %}

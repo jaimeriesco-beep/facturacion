@@ -2,7 +2,7 @@
 {% load formato static %}
 {% block titulo %}{{ c }} · {{ c.proveedor }}{% endblock %}
 {% block contenido %}
-<p class="miga"><a href="{% url 'compras' %}?periodo={{ c.periodo }}">← Compras de {{ c.periodo }}</a></p>
+<p class="miga"><a href="{{ volver }}#compra-{{ c.pk }}">← Compras y gastos</a></p>
 <div class="titulo">
   <h1>{{ c.get_tipo_display }} N° {{ c.folio }}</h1>
   <div class="acciones">{% if c.origen == 'manual' %}<form method="post" action="{% url 'compra_eliminar' c.pk %}" class="form-icono" onsubmit="return confirm('¿Eliminar esta compra registrada a mano?')">{% csrf_token %}<button class="boton-papelera" type="submit"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg>Eliminar</button></form>{% endif %}</div>
@@ -33,7 +33,7 @@
       </tbody></table>{% else %}<p class="suave">Sin pagos registrados.</p>{% endif %}
       <p><strong>Saldo: {{ c.saldo|clp }}</strong>{% if c.fecha_vencimiento %} · vence el {{ c.fecha_vencimiento|date:"d/m/Y" }}{% endif %}</p>
       {% if c.saldo %}
-      <form method="post" class="fila-form" style="padding:0">{% csrf_token %}<input type="hidden" name="accion" value="pago">
+      <form method="post" class="fila-form" style="padding:0">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="pago">
         <input name="monto" value="{{ c.saldo }}" inputmode="numeric" aria-label="Monto" style="max-width:140px">
         <input type="date" name="fecha" value="{{ hoy|date:'Y-m-d' }}" max="{{ hoy|date:'Y-m-d' }}" aria-label="Fecha">
         <select name="medio" aria-label="Medio">{% for v, n in medios %}<option value="{{ v }}">{{ n }}</option>{% endfor %}</select>
@@ -44,7 +44,7 @@
     {% endif %}
   </div>
   <aside>
-    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="accion" value="datos">
+    <form method="post" class="panel">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="datos">
       <h2>Clasificación</h2>
       {% for campo in form %}<div class="campo" style="margin-bottom:12px"><label for="{{ campo.id_for_label }}">{{ campo.label }}</label>{{ campo }}{{ campo.errors }}</div>{% endfor %}
       <label class="casilla"><input type="checkbox" name="recordar"> Usar esta categoría para las próximas compras de {{ c.proveedor }}</label>

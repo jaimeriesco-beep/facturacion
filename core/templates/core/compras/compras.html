@@ -50,10 +50,10 @@
     <thead><tr><th class="c-sel"><input type="checkbox" id="sel-todas" aria-label="Seleccionar todas"></th><th>Fecha</th><th>Documento</th><th>Proveedor</th><th>Categoría</th><th class="num">Neto</th><th class="num">Total</th><th>Pago</th></tr></thead>
     <tbody>
     {% for c in compras %}
-      <tr>
+      <tr id="compra-{{ c.pk }}">
         <td class="c-sel"><input type="checkbox" class="sel-compra" value="{{ c.pk }}" data-saldo="{{ c.saldo }}" aria-label="Seleccionar {{ c }}"></td>
         <td data-rotulo="Fecha">{{ c.fecha_emision|date:"d/m/Y" }}</td>
-        <td data-rotulo="Documento"><a href="{% url 'compra' c.pk %}">{{ c }}</a>{% if c.estado_rcv != 'registro' %} <span class="etiqueta">{{ c.get_estado_rcv_display }}</span>{% endif %}</td>
+        <td data-rotulo="Documento"><a href="{% url 'compra' c.pk %}?volver={{ request.get_full_path|urlencode }}">{{ c }}</a>{% if c.estado_rcv != 'registro' %} <span class="etiqueta">{{ c.get_estado_rcv_display }}</span>{% endif %}</td>
         <td data-rotulo="Proveedor"><a href="{% url 'proveedor' c.proveedor_id %}" class="enlace-suave">{{ c.proveedor }}</a></td>
         <td data-rotulo="Categoría">{% if c.categoria %}{{ c.categoria }}{% else %}<span class="suave">Sin categoría</span>{% endif %}</td>
         <td class="num" data-rotulo="Neto">{% if c.es_nota_credito %}-{% endif %}{{ c.neto|add:c.exento|clp }}</td>

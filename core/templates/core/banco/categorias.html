@@ -3,7 +3,7 @@
 {% block titulo %}Banco · categorías{% endblock %}
 {% block contenido %}
 {% include "core/banco/_pestanas.html" %}
-<p class="suave" style="margin-top:-6px">Las categorías ordenan los movimientos del banco (sueldos, impuestos, arriendo…). Agrúpalas para ver el flujo de caja por grupo en el <a href="{% url 'banco_resumen' %}">resumen</a>.</p>
+<p class="suave" style="margin-top:-6px">Las categorías ordenan los movimientos del banco (sueldos, impuestos, arriendo…). Agrúpalas para ver el flujo de caja por grupo en el <a href="{% url 'banco_resumen' %}">resumen</a>. La <strong>clase</strong> indica si es un ingreso o gasto real (Operación) o solo plata que se mueve: un depósito a plazo (Inversión), un crédito o aporte de socios (Financiamiento) o un traspaso entre cuentas propias.</p>
 <datalist id="grupos-sugeridos">{% for g in grupos_sugeridos %}<option value="{{ g }}">{% endfor %}</datalist>
 <div class="panel">
   <h2>Nueva categoría</h2>
@@ -11,6 +11,7 @@
     <input name="nombre" maxlength="60" required placeholder="Ej.: Mantención de invernaderos" aria-label="Nombre" style="flex:1;min-width:220px;max-width:340px">
     <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}" {% if v == 'egreso' %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
     <input name="grupo" list="grupos-sugeridos" maxlength="60" placeholder="Grupo (ej.: Gastos operacionales)" aria-label="Grupo" style="min-width:220px">
+    <select name="flujo" aria-label="Clase de flujo" title="Solo «Operación» cuenta como ingreso o gasto">{% for v, n in flujos %}<option value="{{ v }}">{{ n }}</option>{% endfor %}</select>
     <button type="submit" class="primario">Crear categoría</button>
   </form>
 </div>
@@ -18,12 +19,13 @@
 <div class="panel">
   <h2 class="grupo-cat">{{ grupo }} <span class="suave">· {{ cats|length }}</span></h2>
   <div class="lista-cat" role="table" aria-label="Categorías de {{ grupo }}">
-    <div class="fila-categoria enc" role="row"><span role="columnheader">Nombre</span><span role="columnheader">Tipo</span><span role="columnheader">Grupo</span><span class="num" role="columnheader">Movim.</span><span class="num" role="columnheader">Total {{ anio }}</span><span role="columnheader">Reglas</span><span role="columnheader">Activa</span><span></span></div>
+    <div class="fila-categoria enc" role="row"><span role="columnheader">Nombre</span><span role="columnheader">Tipo</span><span role="columnheader">Grupo</span><span role="columnheader" title="Solo «Operación» cuenta como ingreso o gasto">Clase</span><span class="num" role="columnheader">Movim.</span><span class="num" role="columnheader">Total {{ anio }}</span><span role="columnheader">Reglas</span><span role="columnheader">Activa</span><span></span></div>
     {% for c in cats %}
     <form method="post" class="fila-categoria{% if not c.activa %} inactiva{% endif %}" role="row">{% csrf_token %}<input type="hidden" name="pk" value="{{ c.pk }}">
       <input name="nombre" value="{{ c.nombre }}" maxlength="60" required aria-label="Nombre de la categoría">
       <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}" {% if v == c.tipo %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
       <input name="grupo" value="{{ c.grupo }}" list="grupos-sugeridos" maxlength="60" placeholder="Sin grupo" aria-label="Grupo">
+      <select name="flujo" aria-label="Clase de flujo" class="sel-flujo f-{{ c.flujo }}">{% for v, n in flujos %}<option value="{{ v }}" {% if v == c.flujo %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
       <span class="num dato" data-rotulo="Movimientos">{% if c.n %}<a href="{% url 'banco' %}?mes=todos&categoria={{ c.pk }}">{{ c.n }}</a>{% else %}0{% endif %}</span>
       <span class="num dato" data-rotulo="{{ anio }}">{% if c.total_anio %}{{ c.total_anio|clp }}{% else %}<span class="suave">—</span>{% endif %}</span>
       <span class="dato">{% if c.n_reglas %}<a href="{% url 'banco_reglas' %}#cat-{{ c.pk }}">{{ c.n_reglas }} regla{{ c.n_reglas|pluralize }}</a>{% else %}<a class="suave" href="{% url 'banco_regla_nueva' %}?categoria={{ c.pk }}">+ regla</a>{% endif %}</span>

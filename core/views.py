@@ -36,7 +36,7 @@ from .dte.secretos import ErrorSecreto, cifrar, descifrar
 from .forms import (CertificadoForm, ClienteForm, DocumentoForm, EmitirForm, EnviarCorreoForm,
                     ImportarClientesForm, LineasFormSet, MarcarPagadoForm, PagoForm, ProductoForm, RecurrenteForm,
                     RecurrenteLineasFormSet, SociedadForm, UsuarioForm)
-from .models import (COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
+from .models import (COMPROBANTE, COTIZACION, FACTURA, FACTURA_EXENTA, FACTURAS, GUIA, NOTA_CREDITO,
                      NOTA_DEBITO, NOTAS, DIAS_AVISO, DIAS_PAPELERA,
                      TIPOS, TIPOS_CORTOS, Cliente, Documento, DosPasos, Envio, Linea, Pago, Producto,
                      Recurrente, Sociedad, firma_de, hoy, perfil_de, purgar_papelera)
@@ -506,8 +506,8 @@ def _form_documento(request, doc, titulo, volver):
                            form_kwargs={"sociedad": request.sociedad})
 
     def al_guardar(d):
-        if d.tipo == FACTURA_EXENTA:
-            d.lineas.update(exento=True)
+        if d.tipo in (FACTURA_EXENTA, COMPROBANTE):
+            d.lineas.update(exento=True)   # el comprobante de ingreso no lleva IVA
         d.recalcular()
         return reverse("documento", args=[d.pk])
 
@@ -515,19 +515,20 @@ def _form_documento(request, doc, titulo, volver):
         "titulo": titulo, "volver": volver, "doc": doc,
         "nuevo_cliente": (reverse("cliente_nuevo") + "?volver=" + quote(request.path)
                           if "cliente" in form.fields else ""),
-        "solo_exento": doc.tipo == FACTURA_EXENTA})
+        "solo_exento": doc.tipo in (FACTURA_EXENTA, COMPROBANTE)})
 
 
 @con_sociedad
 def documento_nuevo(request, tipo):
-    if tipo not in FACTURAS + (GUIA, COTIZACION):
+    if tipo not in FACTURAS + (GUIA, COTIZACION, COMPROBANTE):
         return redirect("documentos")
     if not request.sociedad.clientes.filter(activo=True).exists():
         messages.info(request, "Primero crea un cliente para poder facturarle.")
         return redirect("cliente_nuevo")
     doc = Documento(sociedad=request.sociedad, tipo=tipo,
                     ind_traslado=1 if tipo == GUIA else None)
-    return _form_documento(request, doc, f"Nueva {TIPOS_CORTOS[tipo].lower()}",
+    titulo = "Nuevo comprobante de ingreso" if tipo == COMPROBANTE else f"Nueva {TIPOS_CORTOS[tipo].lower()}"
+    return _form_documento(request, doc, titulo,
                            reverse("cotizaciones" if tipo == COTIZACION else "documentos"))
 
 
@@ -549,7 +550,7 @@ def documento_detalle(request, pk):
         "notas": doc.notas.filter(tipo__in=NOTAS),
         "errores": doc.errores_para_emitir() if doc.estado == Documento.BORRADOR else [],
         "faltantes": (servicio.faltantes(doc)
-                      if doc.estado == Documento.BORRADOR and not doc.es_cotizacion else []),
+                      if doc.estado == Documento.BORRADOR and not doc.es_interno else []),
         "facturas_de_guia": doc.notas.filter(tipo__in=FACTURAS) if doc.es_guia else [],
         "asociados": doc.asociados(),
         "emitir_form": EmitirForm(),
@@ -571,7 +572,7 @@ def documento_asociados(request, pk):
 @con_sociedad
 def documento_emitir(request, pk):
     doc = _documento(request, pk)
-    if doc.es_cotizacion:
+    if doc.es_interno:
         return redirect("documento", pk=pk)
     form = EmitirForm(request.POST)
     errores = doc.errores_para_emitir() + inventario.faltantes(doc)
@@ -605,7 +606,14 @@ def documento_emitir(request, pk):
 def documento_reabrir(request, pk):
     """Corrige un registro mal ingresado. No anula nada ante el SII."""
     doc = _documento(request, pk)
-    if doc.es_cotizacion:
+    if doc.es_comprobante:
+        if doc.pagos.exists():
+            messages.error(request, "No se puede corregir: tiene pagos registrados. Elimínalos o deshaz la conciliación primero.")
+        elif doc.estado == Documento.EMITIDO:  # conserva su número
+            doc.estado = Documento.BORRADOR
+            doc.save(update_fields=["estado"])
+            messages.success(request, "El comprobante quedó abierto para corregirlo.")
+    elif doc.es_cotizacion:
         if doc.estado == Documento.EMITIDO:  # se corrige y conserva su número
             doc.estado = Documento.BORRADOR
             doc.save(update_fields=["estado"])
@@ -759,29 +767,34 @@ def guia_facturar(request, pk):
 
 
 # --- Cotizaciones (documento interno, con numeración propia) --------------------
+def siguiente_folio_interno(sociedad_id, tipo):
+    """Correlativo propio de cotizaciones y comprobantes (bloquea la sociedad para no repetir)."""
+    Sociedad.objects.select_for_update().get(pk=sociedad_id)
+    return (Documento.todos.filter(sociedad_id=sociedad_id, tipo=tipo)
+            .aggregate(m=Max("folio"))["m"] or 0) + 1   # incluye la papelera
+
+
 @require_POST
 @con_sociedad
 def cotizacion_emitir(request, pk):
     """Deja la cotización lista para enviar al cliente y le asigna su número correlativo."""
     doc = _documento(request, pk)
     errores = doc.errores_para_emitir()
-    if not doc.es_cotizacion or doc.estado != Documento.BORRADOR:
-        errores = ["Solo se emiten cotizaciones en borrador."]
+    if not doc.es_interno or doc.estado != Documento.BORRADOR:
+        errores = ["Solo se emiten aquí cotizaciones y comprobantes en borrador."]
     if errores:
         for e in errores:
             messages.error(request, e)
         return redirect("documento", pk=pk)
     with transaction.atomic():
         if not doc.folio:
-            Sociedad.objects.select_for_update().get(pk=doc.sociedad_id)
-            ultimo = (Documento.todos.filter(sociedad_id=doc.sociedad_id).cotizaciones()
-                      .aggregate(m=Max("folio"))["m"] or 0)   # incluye la papelera
-            doc.folio = ultimo + 1
+            doc.folio = siguiente_folio_interno(doc.sociedad_id, doc.tipo)
         doc.estado = Documento.EMITIDO
         if not doc.fecha_vencimiento:
-            doc.fecha_vencimiento = doc.fecha_emision + timedelta(days=30)
+            doc.fecha_vencimiento = doc.fecha_emision + timedelta(
+                days=30 if doc.es_cotizacion else doc.cliente.dias_pago)
         doc.save()
-    messages.success(request, f"{doc} emitida. Ya puedes descargar el PDF para tu cliente.")
+    messages.success(request, f"{doc} emitid{'o' if doc.es_comprobante else 'a'}. Ya puedes descargar el PDF para tu cliente.")
     return redirect("documento", pk=pk)
 
 
@@ -902,7 +915,10 @@ def _correo_inicial(doc, usuario):
     contacto = doc.cliente.contacto(_rol_destinatario(doc))
     saludo = contacto["nombre"] or doc.cliente.nombre_fantasia or doc.cliente.razon_social
     nombre = f"{doc.tipo_corto.lower()} N° {doc.folio}"
-    if doc.es_cotizacion:
+    if doc.es_comprobante:
+        cuerpo = f"Te enviamos adjunto el comprobante de ingreso N° {doc.folio} por {formatear_clp(doc.total)}."
+        cierre = "Cualquier consulta, estamos para ayudarte."
+    elif doc.es_cotizacion:
         vigencia = f", válida hasta el {doc.fecha_vencimiento:%d/%m/%Y}" if doc.fecha_vencimiento else ""
         cuerpo = f"Te enviamos adjunta la {nombre} por {formatear_clp(doc.total)}{vigencia}."
         cierre = "Quedamos atentos a tus comentarios."

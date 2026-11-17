@@ -16,7 +16,7 @@ GRIS = colors.Color(0.4, 0.4, 0.4)
 VERDE = colors.Color(0.07, 0.29, 0.19)
 ANCHO, ALTO = letter
 MARGEN = 15 * mm
-NOMBRES = {1: "COTIZACIÓN", 33: "FACTURA ELECTRÓNICA", 34: "FACTURA NO AFECTA O EXENTA ELECTRÓNICA",
+NOMBRES = {1: "COTIZACIÓN", 2: "COMPROBANTE DE INGRESO", 33: "FACTURA ELECTRÓNICA", 34: "FACTURA NO AFECTA O EXENTA ELECTRÓNICA",
            52: "GUÍA DE DESPACHO ELECTRÓNICA", 56: "NOTA DE DÉBITO ELECTRÓNICA",
            61: "NOTA DE CRÉDITO ELECTRÓNICA"}
 
@@ -57,7 +57,7 @@ def _pagina(c, doc, lineas, cedible):
 
     # Recuadro rojo del SII.
     caja_x, caja_w, caja_h = ANCHO - MARGEN - 75 * mm, 75 * mm, 30 * mm
-    tinta = VERDE if doc.es_cotizacion else ROJO  # el rojo se reserva a documentos tributarios
+    tinta = VERDE if doc.es_interno else ROJO  # el rojo se reserva a documentos tributarios
     c.setStrokeColor(tinta); c.setFillColor(tinta); c.setLineWidth(1.6)
     c.rect(caja_x, y - caja_h, caja_w, caja_h)
     centro = caja_x + caja_w / 2
@@ -70,7 +70,7 @@ def _pagina(c, doc, lineas, cedible):
     c.setFont("Helvetica-Bold", 12)
     c.drawCentredString(centro, y - 26 * mm, f"N° {doc.folio}" if doc.folio else "BORRADOR")
     c.setFont("Helvetica-Bold", 9)
-    if (soc.oficina_sii or soc.comuna) and not doc.es_cotizacion:
+    if (soc.oficina_sii or soc.comuna) and not doc.es_interno:
         c.drawCentredString(centro, y - caja_h - 5 * mm,
                             f"S.I.I. - {(soc.oficina_sii or soc.comuna).upper()}")
 
@@ -100,9 +100,9 @@ def _pagina(c, doc, lineas, cedible):
     # Receptor.
     filas = [("Señor(es)", cli.razon_social, "Fecha emisión", doc.fecha_emision.strftime("%d/%m/%Y")),
              ("R.U.T.", formatear_rut(cli.rut),
-              "Vencimiento" if doc.es_factura else "Válida hasta" if doc.es_cotizacion else "",
+              "Vencimiento" if doc.es_factura or doc.es_comprobante else "Válida hasta" if doc.es_cotizacion else "",
               doc.fecha_vencimiento.strftime("%d/%m/%Y")
-              if (doc.es_factura or doc.es_cotizacion) and doc.fecha_vencimiento else ""),
+              if (doc.es_factura or doc.es_interno) and doc.fecha_vencimiento else ""),
              ("Giro", cli.giro, "Comuna", cli.comuna), ("Dirección", cli.direccion, "Ciudad", cli.ciudad)]
     if doc.es_guia:
         filas.append(("Traslado", doc.get_ind_traslado_display() or "", "Patente", doc.patente))
@@ -167,10 +167,11 @@ def _pagina(c, doc, lineas, cedible):
     # Pie: timbre a la izquierda, totales a la derecha.
     base = MARGEN + (38 * mm if cedible else 0)
     timbre_w, timbre_h = 62 * mm, 28 * mm
-    if doc.es_cotizacion:
+    if doc.es_interno:
         c.setFillColor(GRIS); c.setFont("Helvetica", 8)
-        notas = ["Cotización: documento no tributario.", "Valores en pesos chilenos."]
-        if doc.fecha_vencimiento:
+        notas = ([f"{doc.tipo_corto}: documento no tributario.", "Valores en pesos chilenos."]
+                 if doc.es_comprobante else ["Cotización: documento no tributario.", "Valores en pesos chilenos."])
+        if doc.fecha_vencimiento and doc.es_cotizacion:
             notas.insert(1, f"Válida hasta el {doc.fecha_vencimiento:%d/%m/%Y}.")
         for i, texto in enumerate(notas):
             c.drawString(MARGEN, base + 30 * mm - i * 4.5 * mm, texto)

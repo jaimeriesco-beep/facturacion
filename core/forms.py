@@ -215,7 +215,7 @@ class DocumentoForm(FormBase):
                 del self.fields[campo]
         en_certificacion = (sociedad.ambiente == Sociedad.CERTIFICACION
                             and hasattr(sociedad, "certificado"))
-        if not en_certificacion or self.instance.es_cotizacion:
+        if not en_certificacion or self.instance.es_interno:
             del self.fields["caso_set"]
         if self.instance.es_nota:
             # El cliente de una nota es siempre el del documento de referencia.

@@ -489,7 +489,7 @@ tr.inactivo .persona strong { font-weight: 500; }
 /* Banco: categorías, reglas y resumen */
 .grupo-cat { font-size: 15px; margin: 6px 4px 4px; }
 .lista-cat { display: grid; }
-.fila-categoria { display: grid; grid-template-columns: minmax(180px, 1fr) 150px minmax(150px, 220px) 70px 110px 80px 54px 112px;
+.fila-categoria { display: grid; grid-template-columns: minmax(170px, 1fr) 130px minmax(130px, 200px) 130px 64px 104px 74px 50px 112px;
   gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--borde); margin: 0; }
 .fila-categoria.enc { font-size: 12px; color: var(--suave); font-weight: 600; padding-top: 2px; }
 .fila-categoria input:not([type=checkbox]), .fila-categoria select { width: 100%; min-width: 0; }
@@ -565,3 +565,5 @@ nav.selector-vista a { white-space: nowrap; }
 .grafico-cabeza > div:first-child { flex: 1; min-width: 0; }
 .grafico-cabeza .leyenda { margin: -4px 0 10px; }
 tr:target td { background: var(--verde-claro); transition: background 1.5s; }
+.ayuda-inline { font-size: 11.5px; font-weight: 400; color: var(--suave); text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.sel-flujo.f-inversion { background: #eef3fb; } .sel-flujo.f-financiamiento { background: #f6f0fb; } .sel-flujo.f-interno { background: #f1f2ef; }

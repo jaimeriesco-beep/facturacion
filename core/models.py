@@ -1,3 +1,4 @@
+import re
 import calendar
 import math
 from datetime import date, timedelta
@@ -14,6 +15,7 @@ from .utils import MESES, formatear_clp, formatear_rut, normalizar_rut, redondea
 
 FACTURA, FACTURA_EXENTA, GUIA, NOTA_DEBITO, NOTA_CREDITO = 33, 34, 52, 56, 61
 COTIZACION = 1  # documento interno, no tributario: no existe para el SII
+COMPROBANTE = 2  # comprobante de ingreso: ingreso sin factura (p. ej. arriendo de terreno por contrato)
 TIPOS = [
     (FACTURA, "Factura electrónica"),
     (FACTURA_EXENTA, "Factura exenta electrónica"),
@@ -21,12 +23,16 @@ TIPOS = [
     (NOTA_DEBITO, "Nota de débito electrónica"),
     (GUIA, "Guía de despacho electrónica"),
     (COTIZACION, "Cotización"),
+    (COMPROBANTE, "Comprobante de ingreso"),
 ]
 TIPOS_CORTOS = {FACTURA: "Factura", FACTURA_EXENTA: "Factura exenta",
                 NOTA_CREDITO: "Nota de crédito", NOTA_DEBITO: "Nota de débito",
-                GUIA: "Guía de despacho", COTIZACION: "Cotización"}
+                GUIA: "Guía de despacho", COTIZACION: "Cotización",
+                COMPROBANTE: "Comprobante de ingreso"}
 FACTURAS = (FACTURA, FACTURA_EXENTA)
 NOTAS = (NOTA_CREDITO, NOTA_DEBITO)
+INTERNOS = (COTIZACION, COMPROBANTE)   # numeración propia; no se informan al SII
+POR_COBRAR = FACTURAS + (COMPROBANTE,)
 
 
 DIAS_AVISO = 7   # desde cuántos días antes del vencimiento se marca en ámbar
@@ -229,7 +235,7 @@ class DocumentoQuerySet(models.QuerySet):
         return self.filter(tipo=COTIZACION)
 
     def por_cobrar(self):
-        return (self.filter(tipo__in=FACTURAS, estado=Documento.EMITIDO, es_prueba=False)
+        return (self.filter(tipo__in=POR_COBRAR, estado=Documento.EMITIDO, es_prueba=False)
                 .con_saldo().filter(saldo_a__gt=0))
 
 
@@ -361,6 +367,15 @@ class Documento(models.Model):
     def es_cotizacion(self):
         return self.tipo == COTIZACION
 
+    @property
+    def es_comprobante(self):
+        return self.tipo == COMPROBANTE
+
+    @property
+    def es_interno(self):
+        """Cotizaciones y comprobantes de ingreso: no tributarios, con numeración propia."""
+        return self.tipo in INTERNOS
+
     def motivo_no_eliminable(self):
         """Por qué no puede ir a la papelera, o "" si puede.
 
@@ -396,7 +411,7 @@ class Documento(models.Model):
     @property
     def aviso_papelera(self):
         """Texto extra para la confirmación de eliminar."""
-        if self.estado == self.EMITIDO and not self.es_propio and not self.es_prueba and not self.es_cotizacion:
+        if self.estado == self.EMITIDO and not self.es_propio and not self.es_prueba and not self.es_interno:
             return "Se emitió en el portal del SII: el original sigue allá; aquí solo se borra el registro."
         if self.estado_sii == "rechazado":
             return "El SII lo rechazó, así que no tiene validez tributaria."
@@ -459,7 +474,7 @@ class Documento(models.Model):
 
     def errores_para_emitir(self):
         errores = []
-        if not self.cliente.rut and not self.es_cotizacion:
+        if not self.cliente.rut and not self.es_interno:
             errores.append("El cliente no tiene RUT: complétalo en Clientes.")
         lineas = list(self.lineas.all())
         if not lineas:
@@ -610,7 +625,8 @@ class Recurrente(models.Model):
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="recurrentes")
     nombre = models.CharField(max_length=80, help_text="Ej.: Arriendo oficina 301")
     tipo = models.PositiveSmallIntegerField(
-        choices=[t for t in TIPOS if t[0] in FACTURAS], default=FACTURA)
+        choices=[t for t in TIPOS if t[0] in POR_COBRAR], default=FACTURA,
+        help_text="Comprobante de ingreso: para cobros sin factura, como un arriendo de terreno por contrato.")
     dia_emision = models.PositiveSmallIntegerField(
         "Día de emisión", default=1, help_text="Día del mes (1 a 28).")
     fecha_inicio = models.DateField("Desde", default=hoy)
@@ -666,7 +682,7 @@ class Recurrente(models.Model):
             Linea.objects.create(
                 documento=doc, producto=l.producto, descripcion=texto, cantidad=l.cantidad,
                 precio=l.precio, descuento=l.descuento,
-                exento=l.exento or self.tipo == FACTURA_EXENTA)
+                exento=l.exento or self.tipo in (FACTURA_EXENTA, COMPROBANTE))
         doc.recalcular()
         return doc
 
@@ -1014,26 +1030,36 @@ class PagoCompra(models.Model):
 
 GRUPOS_BANCO = ["Ingresos operacionales", "Costos de producción", "Remuneraciones",
                 "Impuestos y contribuciones", "Gastos de administración", "Gastos financieros",
-                "Movimientos con socios", "Movimientos internos", "Otros"]
+                "Inversiones", "Financiamiento", "Movimientos con socios", "Movimientos internos", "Otros"]
 
-# (nombre, tipo, grupo)
+# Clase de flujo de caja: solo «operacion» es ingreso o gasto real. Tomar un DAP, recibir un
+# crédito o traspasar entre cuentas propias mueve el saldo, pero no es ingreso ni gasto.
+FLUJOS = [("operacion", "Operación: ingreso o gasto real"),
+          ("inversion", "Inversión: depósitos a plazo, fondos mutuos"),
+          ("financiamiento", "Financiamiento: créditos, aportes y retiros de socios"),
+          ("interno", "Traspaso entre cuentas propias")]
+
+# (nombre, tipo, grupo, flujo)
 CATEGORIAS_BANCO = [
-    ("Cobro a clientes", "ingreso", "Ingresos operacionales"),
-    ("Pago a proveedores", "egreso", "Costos de producción"),
-    ("Sueldos y honorarios", "egreso", "Remuneraciones"),
-    ("Previsión (AFP, salud, seguro de cesantía)", "egreso", "Remuneraciones"),
-    ("Impuestos (F29, PPM, renta)", "egreso", "Impuestos y contribuciones"),
-    ("Contribuciones", "egreso", "Impuestos y contribuciones"),
-    ("Arriendo", "egreso", "Gastos de administración"),
-    ("Comisiones y gastos bancarios", "egreso", "Gastos financieros"),
-    ("Créditos y préstamos", "ambos", "Gastos financieros"),
-    ("Traspasos entre cuentas propias", "ambos", "Movimientos internos"),
-    ("Retiros de socios", "egreso", "Movimientos con socios"),
-    ("Aportes de socios", "ingreso", "Movimientos con socios"),
-    ("Seguros", "egreso", "Gastos de administración"),
-    ("Otros ingresos", "ingreso", "Otros"),
-    ("Otros egresos", "egreso", "Otros"),
+    ("Cobro a clientes", "ingreso", "Ingresos operacionales", "operacion"),
+    ("Pago a proveedores", "egreso", "Costos de producción", "operacion"),
+    ("Sueldos y honorarios", "egreso", "Remuneraciones", "operacion"),
+    ("Previsión (AFP, salud, seguro de cesantía)", "egreso", "Remuneraciones", "operacion"),
+    ("Impuestos (F29, PPM, renta)", "egreso", "Impuestos y contribuciones", "operacion"),
+    ("Contribuciones", "egreso", "Impuestos y contribuciones", "operacion"),
+    ("Arriendo", "egreso", "Gastos de administración", "operacion"),
+    ("Comisiones y gastos bancarios", "egreso", "Gastos financieros", "operacion"),
+    ("Depósitos a plazo (DAP)", "ambos", "Inversiones", "inversion"),
+    ("Créditos y préstamos", "ambos", "Financiamiento", "financiamiento"),
+    ("Traspasos entre cuentas propias", "ambos", "Movimientos internos", "interno"),
+    ("Retiros de socios", "egreso", "Movimientos con socios", "financiamiento"),
+    ("Aportes de socios", "ingreso", "Movimientos con socios", "financiamiento"),
+    ("Seguros", "egreso", "Gastos de administración", "operacion"),
+    ("Otros ingresos", "ingreso", "Otros", "operacion"),
+    ("Otros egresos", "egreso", "Otros", "operacion"),
 ]
+# Reglas que trae cada sociedad nueva: (palabras, categoría)
+REGLAS_BANCO = [("DAP, DEPOSITO A PLAZO, DEP. A PLAZO, DEP A PLAZO", "Depósitos a plazo (DAP)")]
 COBRO_CLIENTES, PAGO_PROVEEDORES = "Cobro a clientes", "Pago a proveedores"
 
 
@@ -1064,6 +1090,7 @@ class CategoriaBanco(models.Model):
     nombre = models.CharField(max_length=60)
     tipo = models.CharField(max_length=7, choices=TIPOS, default="ambos")
     grupo = models.CharField(max_length=60, blank=True, help_text="Para agrupar en los resúmenes.")
+    flujo = models.CharField("Clase de flujo", max_length=14, choices=FLUJOS, default="operacion")
     activa = models.BooleanField(default=True)
 
     class Meta:
@@ -1077,7 +1104,10 @@ class CategoriaBanco(models.Model):
 def categorias_banco_de(sociedad):
     if not sociedad.categorias_banco.exists():
         CategoriaBanco.objects.bulk_create(
-            [CategoriaBanco(sociedad=sociedad, nombre=n, tipo=t, grupo=g) for n, t, g in CATEGORIAS_BANCO])
+            [CategoriaBanco(sociedad=sociedad, nombre=n, tipo=t, grupo=g, flujo=f) for n, t, g, f in CATEGORIAS_BANCO])
+        for texto, nombre in REGLAS_BANCO:
+            ReglaBanco.objects.create(sociedad=sociedad, texto=texto, prioridad=50,
+                                      categoria=sociedad.categorias_banco.get(nombre=nombre))
     return sociedad.categorias_banco.filter(activa=True)
 
 
@@ -1140,7 +1170,9 @@ class ReglaBanco(models.Model):
         if self.monto_max is not None and monto > self.monto_max:
             return False
         descripcion = _sin_tildes(movimiento.descripcion)
-        return any(p in descripcion for p in self.palabras)
+        # Cada palabra debe empezar una palabra de la descripción: «DAP» calza con «DAP 30 DÍAS»
+        # pero no con «ADAPTADOR»; «REMUNERACION» sí calza con «REMUNERACIONES».
+        return any(re.search(r"(?<![a-z0-9])" + re.escape(p), descripcion) for p in self.palabras)
 
 
 def _sin_tildes(texto):

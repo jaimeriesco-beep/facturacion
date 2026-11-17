@@ -13,9 +13,9 @@ from django.views.decorators.http import require_POST
 
 from . import banco
 from .paginas import paginar, volver_seguro
-from .models import (GRUPOS_BANCO, CategoriaBanco, Compra, CuentaBancaria, Documento, MovimientoBancario,
+from .models import (FLUJOS, GRUPOS_BANCO, CategoriaBanco, Compra, CuentaBancaria, Documento, MovimientoBancario,
                      ReglaBanco, categorias_banco_de, hoy)
-from .utils import MESES, formatear_clp
+from .utils import MESES, formatear_clp, normalizar_rut
 from .views import con_sociedad
 from .vistas_compras import VariosArchivosField
 from .vistas_inventario import _excel
@@ -95,8 +95,8 @@ def movimientos(request):
 def _por_categoria(filas):
     ingresos, egresos = {}, {}
     for m in filas:
-        if m.ignorado:
-            continue
+        if m.ignorado or (m.categoria_id and m.categoria.flujo != "operacion"):
+            continue    # un DAP, un crédito o un traspaso no es ingreso ni gasto
         nombre = str(m.categoria) if m.categoria_id else "Sin categoría"
         destino = ingresos if m.monto > 0 else egresos
         destino[nombre] = destino.get(nombre, 0) + abs(m.monto)
@@ -194,6 +194,27 @@ def movimiento(request, pk):
                 messages.success(request, f"Movimiento conciliado con {n} documento{'s' if n > 1 else ''}; "
                                           f"{'los cobros' if m.es_abono else 'los pagos'} quedaron registrados.")
                 return redirect(al_listado)
+        elif que == "comprobante":
+            if not m.es_abono or not m.por_conciliar:
+                messages.error(request, "Solo se crea un comprobante para un abono que falta conciliar.")
+                return redirect(detalle)
+            concepto = request.POST.get("concepto", "").strip()[:200]
+            cli_id = request.POST.get("cliente", "")
+            cliente = soc.clientes.filter(pk=cli_id).first() if cli_id.isdigit() else None
+            nombre = request.POST.get("nombre", "").strip()[:100]
+            rut = request.POST.get("rut", "").strip()
+            if rut:
+                try:
+                    rut = normalizar_rut(rut)
+                except Exception:
+                    messages.error(request, "El RUT no es válido.")
+                    return redirect(detalle)
+            if not concepto or not (cliente or nombre):
+                messages.error(request, "Indica quién paga y el concepto.")
+                return redirect(detalle)
+            doc = crear_comprobante(soc, m, cliente, nombre, rut, concepto)
+            messages.success(request, f"{doc} creado por {formatear_clp(doc.total)} y conciliado con el abono.")
+            return redirect(al_listado)
         elif que == "deshacer":
             banco.deshacer(m)
             messages.success(request, "Conciliación deshecha: se eliminaron los pagos que había creado.")
@@ -235,7 +256,53 @@ def movimiento(request, pk):
     return render(request, "core/banco/movimiento.html", {
         "m": m, "sugeridas": sugeridas, "otros": otros, "categorias": categorias_banco_de(soc),
         "conciliaciones": m.conciliaciones.select_related("pago__documento", "pago_compra__compra"),
-        "regla_sugerida": banco.texto_regla(m.descripcion), "siguiente": siguiente, "volver": volver})
+        "regla_sugerida": banco.texto_regla(m.descripcion), "siguiente": siguiente, "volver": volver,
+        **(_sugerencia_comprobante(soc, m) if m.es_abono and m.por_conciliar else {})})
+
+
+def _sugerencia_comprobante(soc, m):
+    """Si un abono parecido ya se registró con comprobante (p. ej. el arriendo del mes pasado),
+    propone el mismo cliente y concepto, con el mes actualizado."""
+    from .models import COMPROBANTE
+    clave = banco.texto_regla(m.descripcion).lower()
+    previo = None
+    for d in (soc.documentos.filter(tipo=COMPROBANTE, pagos__conciliacion__movimiento__cuenta=m.cuenta)
+              .distinct().select_related("cliente").order_by("-fecha_emision")[:30]):
+        movs = [p.conciliacion.movimiento for p in d.pagos.select_related("conciliacion__movimiento")
+                if getattr(p, "conciliacion", None)]
+        if any(banco.texto_regla(x.descripcion).lower() == clave for x in movs):
+            previo = d
+            break
+    concepto = ""
+    if previo:
+        linea = previo.lineas.first()
+        concepto = linea.descripcion if linea else ""
+        for i, nombre in enumerate(MESES):
+            if nombre in concepto.lower():
+                concepto = re.sub(nombre, MESES[m.fecha.month - 1], concepto, flags=re.I)
+                concepto = re.sub(r"\b20\d\d\b", str(m.fecha.year), concepto)
+                break
+    return {"clientes": soc.clientes.filter(activo=True), "cliente_sugerido": previo.cliente_id if previo else None,
+            "concepto_sugerido": concepto}
+
+
+@transaction.atomic
+def crear_comprobante(soc, m, cliente, nombre, rut, concepto):
+    """Comprobante de ingreso emitido por el monto pendiente del abono, ya conciliado."""
+    from .models import COMPROBANTE, Cliente, Linea
+    from .views import siguiente_folio_interno
+    if cliente is None:
+        cliente = (soc.clientes.filter(rut=rut).first() if rut else None) or Cliente.objects.create(
+            sociedad=soc, rut=rut, razon_social=nombre, dias_pago=0)
+    monto = m.por_conciliar
+    doc = Documento.objects.create(
+        sociedad=soc, cliente=cliente, tipo=COMPROBANTE, estado=Documento.EMITIDO,
+        folio=siguiente_folio_interno(soc.pk, COMPROBANTE), fecha_emision=m.fecha, fecha_vencimiento=m.fecha,
+        observaciones=f"Ingreso recibido en {m.cuenta}"[:300])
+    Linea.objects.create(documento=doc, descripcion=concepto, cantidad=1, precio=monto, exento=True)
+    doc.recalcular()
+    banco.conciliar(m, [(Documento.objects.con_saldo().get(pk=doc.pk), monto)])
+    return doc
 
 
 # --------------------------------------------------- Categorías, reglas y cuentas
@@ -286,17 +353,18 @@ def configuracion(request):
         pk = request.POST.get("pk", "")
         tipo = request.POST.get("tipo") if request.POST.get("tipo") in dict(CategoriaBanco.TIPOS) else "egreso"
         grupo = request.POST.get("grupo", "").strip()[:60]
+        flujo = request.POST.get("flujo") if request.POST.get("flujo") in dict(FLUJOS) else "operacion"
         if not nombre:
             messages.error(request, "Indica el nombre.")
         elif soc.categorias_banco.filter(nombre__iexact=nombre).exclude(pk=pk or None).exists():
             messages.error(request, f"Ya existe una categoría «{nombre}».")
         elif pk.isdigit():
             c = get_object_or_404(CategoriaBanco, pk=pk, sociedad=soc)
-            c.nombre, c.tipo, c.grupo, c.activa = nombre, tipo, grupo, bool(request.POST.get("activa"))
+            c.nombre, c.tipo, c.grupo, c.flujo, c.activa = nombre, tipo, grupo, flujo, bool(request.POST.get("activa"))
             c.save()
             messages.success(request, f"Categoría «{c}» guardada.")
         else:
-            CategoriaBanco.objects.create(sociedad=soc, nombre=nombre, tipo=tipo, grupo=grupo)
+            CategoriaBanco.objects.create(sociedad=soc, nombre=nombre, tipo=tipo, grupo=grupo, flujo=flujo)
             messages.success(request, f"Categoría «{nombre}» creada.")
         return redirect("banco_configuracion")
     anio = hoy().year
@@ -315,6 +383,7 @@ def configuracion(request):
         "pestanas": _pestanas("categorias"), "anio": anio,
         "grupos": sorted(grupos.items(), key=lambda g: (orden.get(g[0], 98), g[0])),
         "tipos": CategoriaBanco.TIPOS, "grupos_sugeridos": GRUPOS_BANCO,
+        "flujos": [(v, n.split(":")[0]) for v, n in FLUJOS],
         "categorias": [c for c in categorias if c.activa]})
 
 
@@ -427,10 +496,16 @@ def resumen(request):
     qs = MovimientoBancario.objects.filter(cuenta__sociedad=soc, fecha__gte=desde, ignorado=False)
     if cuenta.isdigit():
         qs = qs.filter(cuenta_id=cuenta)
-    tabla = {}
-    for m in qs.select_related("categoria").only("fecha", "monto", "categoria__nombre", "categoria__grupo"):
+    tabla, otros = {}, {}
+    for m in qs.select_related("categoria").only("fecha", "monto", "categoria__nombre", "categoria__grupo",
+                                                 "categoria__flujo"):
         tipo = "ingresos" if m.monto > 0 else "egresos"
         cat = m.categoria
+        i = meses.index((m.fecha.year, m.fecha.month))
+        if cat and cat.flujo != "operacion":     # inversión, financiamiento, traspasos: no son ingreso ni gasto
+            fila = otros.setdefault((cat.flujo, cat.nombre, cat.pk), [0] * n_meses)
+            fila[i] += m.monto
+            continue
         clave = (tipo, cat.grupo if cat and cat.grupo else ("Sin categoría" if not cat else "Sin grupo"),
                  cat.nombre if cat else "Sin categoría", cat.pk if cat else None)
         fila = tabla.setdefault(clave, [0] * n_meses)
@@ -450,22 +525,40 @@ def resumen(request):
         totales = [sum(g["subtotal"][i] for g in lista) for i in range(n_meses)]
         secciones.append({"tipo": tipo, "grupos": lista, "totales": totales, "total": sum(totales)})
     neto = [secciones[0]["totales"][i] - secciones[1]["totales"][i] for i in range(n_meses)]
+    no_operacionales = []
+    for clave_flujo, titulo in FLUJOS[1:]:
+        filas = [{"nombre": n, "pk": pk, "valores": v, "total": sum(v)}
+                 for (f, n, pk), v in otros.items() if f == clave_flujo]
+        if filas:
+            totales = [sum(f["valores"][i] for f in filas) for i in range(n_meses)]
+            no_operacionales.append({"clave": clave_flujo, "titulo": titulo.split(":")[0],
+                                     "detalle": titulo.split(":")[1].strip() if ":" in titulo else "",
+                                     "filas": filas, "totales": totales, "total": sum(totales)})
+    variacion = [neto[i] + sum(s["totales"][i] for s in no_operacionales) for i in range(n_meses)]
     claves = [f"{a}-{m:02d}" for a, m in meses]
     for sec in secciones:
         for g in sec["grupos"]:
             for f in g["filas"]:
                 f["celdas"] = list(zip(f["valores"], [{"clave": c} for c in claves]))
+    for sec in no_operacionales:
+        for f in sec["filas"]:
+            f["celdas"] = list(zip(f["valores"], [{"clave": c} for c in claves]))
     if request.GET.get("formato") == "excel":
         filas = []
         for sec in secciones:
             for g in sec["grupos"]:
                 for f in g["filas"]:
                     filas.append([sec["tipo"].capitalize(), g["grupo"], f["nombre"], *f["valores"], f["total"]])
-        filas.append(["Neto", "", "", *neto, sum(neto)])
+        filas.append(["Resultado operacional", "", "", *neto, sum(neto)])
+        for sec in no_operacionales:
+            for f in sec["filas"]:
+                filas.append([sec["titulo"], "", f["nombre"], *f["valores"], f["total"]])
+        filas.append(["Variación del saldo", "", "", *variacion, sum(variacion)])
         return _excel(f"banco-por-categoria-{hoy_:%Y-%m}", ["Tipo", "Grupo", "Categoría"]
                       + [f"{MESES[m - 1][:3].capitalize()} {a}" for a, m in meses] + ["Total"], filas)
     return render(request, "core/banco/resumen.html", {
         "pestanas": _pestanas("resumen"), "secciones": secciones, "neto": neto, "neto_total": sum(neto),
+        "no_operacionales": no_operacionales, "variacion": variacion, "variacion_total": sum(variacion),
         "meses": [{"clave": f"{a}-{m:02d}", "nombre": f"{MESES[m - 1][:3].capitalize()} {str(a)[2:]}"} for a, m in meses],
         "n_meses": n_meses, "opciones_meses": (3, 6, 12, 24), "cuentas": soc.cuentas.all(), "cuenta": cuenta})
 

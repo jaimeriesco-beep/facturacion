@@ -28,8 +28,22 @@
     <tr class="total"><td>Total {{ sec.tipo }}</td>{% for v in sec.totales %}<td class="num">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num">{{ sec.total|clp }}</td></tr>
   </tbody>
   {% endfor %}
-  <tfoot><tr class="neto"><td>Flujo neto</td>{% for v in neto %}<td class="num{% if v < 0 %} peligro{% elif v > 0 %} monto-abono{% endif %}">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num{% if neto_total < 0 %} peligro{% else %} monto-abono{% endif %}">{{ neto_total|clp }}</td></tr></tfoot>
+  <tbody>
+    <tr class="neto"><td>Resultado operacional <span class="ayuda-inline">ingresos − gastos reales</span></td>{% for v in neto %}<td class="num{% if v < 0 %} peligro{% elif v > 0 %} monto-abono{% endif %}">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num{% if neto_total < 0 %} peligro{% else %} monto-abono{% endif %}">{{ neto_total|clp }}</td></tr>
+  </tbody>
+  {% for sec in no_operacionales %}
+  <tbody>
+    <tr class="seccion"><th colspan="{{ n_meses|add:2 }}">{{ sec.titulo }} <span class="ayuda-inline">{{ sec.detalle }} · no es ingreso ni gasto · + entra, − sale</span></th></tr>
+    {% for f in sec.filas %}
+    <tr><td class="sangria">{{ f.nombre }}</td>{% for v, m in f.celdas %}<td class="num">{% if v %}<a href="{% url 'banco' %}?mes={{ m.clave }}&categoria={{ f.pk }}{% if cuenta %}&cuenta={{ cuenta }}{% endif %}">{{ v|clp }}</a>{% endif %}</td>{% endfor %}<td class="num">{{ f.total|clp }}</td></tr>
+    {% endfor %}
+    {% if sec.filas|length > 1 %}<tr class="total"><td>Total {{ sec.titulo|lower }}</td>{% for v in sec.totales %}<td class="num">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num">{{ sec.total|clp }}</td></tr>{% endif %}
+  </tbody>
+  {% endfor %}
+  {% if no_operacionales %}
+  <tfoot><tr class="neto"><td>Variación del saldo</td>{% for v in variacion %}<td class="num{% if v < 0 %} peligro{% elif v > 0 %} monto-abono{% endif %}">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num{% if variacion_total < 0 %} peligro{% else %} monto-abono{% endif %}">{{ variacion_total|clp }}</td></tr></tfoot>
+  {% endif %}
 </table>
 </div>
-<p class="ayuda">No incluye los movimientos marcados «sin revisión» (ignorados). Los traspasos entre cuentas propias aparecen como ingreso en una y egreso en otra; para excluirlos, márcalos sin revisión o usa la categoría de traspasos.</p>
+<p class="ayuda">El resultado operacional considera solo ingresos y gastos reales. Los depósitos a plazo, créditos, aportes o retiros de socios y traspasos entre cuentas propias se muestran aparte, según la «clase de flujo» de cada categoría (se cambia en la pestaña Categorías). La variación del saldo suma todo y debe coincidir con lo que cambió el saldo del banco. No incluye los movimientos marcados «sin revisión».</p>
 {% endblock %}

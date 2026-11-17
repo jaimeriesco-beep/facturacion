@@ -27,6 +27,22 @@
 <div class="perfil-grid">
   <div>
   {% if m.por_conciliar %}
+  {% if m.es_abono and not sugeridas %}
+  <details class="panel comprobante-desde-banco"{% if concepto_sugerido or not sugeridas and not otros %} open{% endif %}>
+    <summary><h2 style="display:inline">¿Es un ingreso sin factura?</h2> <span class="suave">Arriendo por contrato, reembolso, otro ingreso</span></summary>
+    <form method="post" style="margin-top:12px">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="comprobante">
+      <p class="suave" style="margin-top:0">Crea un <strong>comprobante de ingreso</strong> (documento interno, no tributario y sin IVA) por {{ m.por_conciliar|clp }} con fecha {{ m.fecha|date:"d/m/Y" }}, y lo concilia con este abono. Así el ingreso aparece en el Inicio y en los reportes.</p>
+      <div class="campos">
+        <div class="campo"><label for="cp-cliente">Quién paga</label>
+          <select id="cp-cliente" name="cliente"><option value="">— Nuevo —</option>{% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk == cliente_sugerido %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="campo cp-nuevo"><label for="cp-nombre">Nombre (si es nuevo)</label><input id="cp-nombre" name="nombre" maxlength="100" placeholder="Ej.: Juan Pérez"></div>
+        <div class="campo cp-nuevo"><label for="cp-rut">RUT <span class="suave">(opcional)</span></label><input id="cp-rut" name="rut" maxlength="12"></div>
+        <div class="campo" style="grid-column:1/-1"><label for="cp-concepto">Concepto</label><input id="cp-concepto" name="concepto" maxlength="200" required value="{{ concepto_sugerido }}" placeholder="Ej.: Arriendo de terreno {{ m.fecha|date:'F Y'|lower }}"></div>
+      </div>
+      <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Crear comprobante y conciliar</button></div>
+    </form>
+  </details>
+  {% endif %}
   <form method="post" class="panel" id="form-conciliar">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="conciliar">
     <h2>{% if m.es_abono %}¿Qué factura se está cobrando?{% else %}¿Qué compra se está pagando?{% endif %}</h2>
     <p class="suave" style="margin-top:-4px">Marca uno o varios documentos. Al conciliar se registra {% if m.es_abono %}el cobro en la factura{% else %}el pago en la compra{% endif %} con la fecha del banco. Por conciliar: <strong>{{ m.por_conciliar|clp }}</strong>.</p>
@@ -43,7 +59,7 @@
     {% endwith %}{% endfor %}
     </ul>
     {% endif %}
-    <details class="otros-docs"{% if not sugeridas %} open{% endif %}><summary>{% if sugeridas %}Otros documentos{% else %}Elegir documento{% endif %} ({{ otros|length }})</summary>
+    <details class="otros-docs"{% if not sugeridas and otros|length <= 8 %} open{% endif %}><summary>{% if sugeridas %}Otros documentos{% else %}Elegir documento{% endif %} ({{ otros|length }})</summary>
       <input type="search" placeholder="Buscar por cliente, proveedor o folio" class="buscar-doc" aria-label="Buscar documento" style="margin:8px 0">
       <ul class="lista-conciliar">
       {% for d in otros %}
@@ -58,6 +74,22 @@
     </details>
     <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Conciliar</button><span class="suave" id="suma-conciliar"></span></div>
   </form>
+  {% if m.es_abono and sugeridas %}
+  <details class="panel comprobante-desde-banco"{% if concepto_sugerido or not sugeridas and not otros %} open{% endif %}>
+    <summary><h2 style="display:inline">¿Es un ingreso sin factura?</h2> <span class="suave">Arriendo por contrato, reembolso, otro ingreso</span></summary>
+    <form method="post" style="margin-top:12px">{% csrf_token %}<input type="hidden" name="volver" value="{{ volver }}"><input type="hidden" name="accion" value="comprobante">
+      <p class="suave" style="margin-top:0">Crea un <strong>comprobante de ingreso</strong> (documento interno, no tributario y sin IVA) por {{ m.por_conciliar|clp }} con fecha {{ m.fecha|date:"d/m/Y" }}, y lo concilia con este abono. Así el ingreso aparece en el Inicio y en los reportes.</p>
+      <div class="campos">
+        <div class="campo"><label for="cp-cliente">Quién paga</label>
+          <select id="cp-cliente" name="cliente"><option value="">— Nuevo —</option>{% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk == cliente_sugerido %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+        <div class="campo cp-nuevo"><label for="cp-nombre">Nombre (si es nuevo)</label><input id="cp-nombre" name="nombre" maxlength="100" placeholder="Ej.: Juan Pérez"></div>
+        <div class="campo cp-nuevo"><label for="cp-rut">RUT <span class="suave">(opcional)</span></label><input id="cp-rut" name="rut" maxlength="12"></div>
+        <div class="campo" style="grid-column:1/-1"><label for="cp-concepto">Concepto</label><input id="cp-concepto" name="concepto" maxlength="200" required value="{{ concepto_sugerido }}" placeholder="Ej.: Arriendo de terreno {{ m.fecha|date:'F Y'|lower }}"></div>
+      </div>
+      <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Crear comprobante y conciliar</button></div>
+    </form>
+  </details>
+  {% endif %}
   {% endif %}
   </div>
   <aside>

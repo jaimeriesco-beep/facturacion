@@ -1651,7 +1651,7 @@ class CategoriasYReglasTests(Base):
         datos = {"texto": "TESORERIA", "categoria": imp.pk, "solo": "cargo", "prioridad": 100, "activa": "on"}
         r = self.client.post(reverse("banco_regla_nueva"), {**datos, "accion": "probar"})
         self.assertEqual(r.context["resumen_vista"]["total"], 1)
-        self.assertFalse(ReglaBanco.objects.exists())
+        self.assertFalse(ReglaBanco.objects.filter(texto="TESORERIA").exists())
         self.client.post(reverse("banco_regla_nueva"), {**datos, "accion": "guardar", "aplicar": "on"})
         self.assertEqual(MovimientoBancario.objects.get(descripcion__contains="TESORERIA").categoria, imp)
         r = self.client.post(reverse("banco_regla_nueva"), {**datos, "texto": "ab", "accion": "guardar"})
@@ -1670,7 +1670,7 @@ class CategoriasYReglasTests(Base):
         regla.refresh_from_db()
         self.assertEqual((regla.texto, regla.prioridad), ("TESORERIA, TGR", 5))
         self.client.post(reverse("banco_reglas"), {"accion": "borrar", "pk": regla.pk})
-        self.assertFalse(ReglaBanco.objects.exists())
+        self.assertFalse(ReglaBanco.objects.filter(pk=regla.pk).exists())
 
     def test_sugerencias_de_movimientos_repetidos(self):
         from .banco import sugerir_reglas
@@ -1848,6 +1848,80 @@ class VolverAlListadoTests(Base):
         r = self.client.post(reverse("compra", args=[c.pk]), {"accion": "datos", "volver": volver,
                                                               "categoria": categorias_de(self.soc).first().pk})
         self.assertRedirects(r, volver + f"#compra-{c.pk}", fetch_redirect_response=False)
+
+
+class ComprobanteIngresoTests(Base):
+    def setUp(self):
+        super().setUp()
+        from .models import CuentaBancaria, MovimientoBancario
+        self.cuenta = CuentaBancaria.objects.create(sociedad=self.soc, banco="Banco Santander", numero="123")
+        self.abono = MovimientoBancario.objects.create(cuenta=self.cuenta, fecha=date(2026, 10, 5), monto=850000,
+                                                       descripcion="0995932008 TRANSF DE JUAN PEREZ", huella="a1")
+
+    def test_crear_desde_el_banco_concilia_y_cuenta_en_el_inicio(self):
+        from .models import COMPROBANTE, MovimientoBancario
+        r = self.client.post(reverse("banco_movimiento", args=[self.abono.pk]), {
+            "accion": "comprobante", "cliente": "", "nombre": "Juan Pérez", "rut": "",
+            "concepto": "Arriendo de terreno octubre 2026"})
+        self.assertEqual(r.status_code, 302)
+        doc = Documento.objects.get(tipo=COMPROBANTE)
+        self.assertEqual((doc.folio, doc.estado, doc.total, doc.iva, doc.estado_sii), (1, "emitido", 850000, 0, ""))
+        self.assertEqual(Documento.objects.con_saldo().get(pk=doc.pk).saldo_a, 0)
+        self.assertEqual(MovimientoBancario.objects.get(pk=self.abono.pk).estado, "conciliado")
+        from . import resumen
+        datos = resumen.calcular(self.soc, "anio")
+        self.assertEqual(datos["series"]["ventas"][-1], 850000)
+        self.assertEqual(datos["series"]["cobrado"][-1], 850000)
+        self.assertIn("Juan Pérez", [c["nombre"] for c in datos["series"]["clientes"]])
+        # El mes siguiente propone el mismo cliente y concepto con el mes actualizado.
+        nov = MovimientoBancario.objects.create(cuenta=self.cuenta, fecha=date(2026, 11, 5), monto=850000,
+                                                descripcion="0112281223 TRANSF DE JUAN PEREZ", huella="a2")
+        r = self.client.get(reverse("banco_movimiento", args=[nov.pk]))
+        self.assertEqual(r.context["cliente_sugerido"], doc.cliente_id)
+        self.assertEqual(r.context["concepto_sugerido"], "Arriendo de terreno noviembre 2026")
+        self.client.post(reverse("banco_movimiento", args=[nov.pk]), {
+            "accion": "comprobante", "cliente": doc.cliente_id, "concepto": r.context["concepto_sugerido"]})
+        self.assertEqual(list(Documento.objects.filter(tipo=COMPROBANTE).values_list("folio", flat=True)), [2, 1])
+        pdf = self.client.get(reverse("documento_pdf", args=[doc.pk]))
+        self.assertEqual((pdf.status_code, pdf["Content-Type"]), (200, "application/pdf"))
+
+    def test_manual_sin_rut_no_va_al_sii_y_entra_a_cobranza(self):
+        from .models import COMPROBANTE, Cliente, Linea
+        sin_rut = Cliente.objects.create(sociedad=self.soc, razon_social="Arrendatario", dias_pago=5)
+        doc = Documento.objects.create(sociedad=self.soc, cliente=sin_rut, tipo=COMPROBANTE)
+        Linea.objects.create(documento=doc, descripcion="Arriendo", cantidad=1, precio=100000, exento=True)
+        doc.recalcular()
+        self.assertEqual(doc.errores_para_emitir(), [])
+        self.client.post(reverse("cotizacion_emitir", args=[doc.pk]))
+        doc.refresh_from_db()
+        self.assertEqual((doc.estado, doc.folio, doc.iva), ("emitido", 1, 0))
+        self.assertIn(doc, Documento.objects.por_cobrar())
+        self.client.post(reverse("documento_emitir", args=[doc.pk]), {"folio": 99})
+        doc.refresh_from_db()
+        self.assertEqual(doc.folio, 1)
+
+
+class FlujoDAPTests(Base):
+    def test_dap_es_inversion_y_no_gasto(self):
+        from .banco import aplicar_reglas
+        from .models import CuentaBancaria, MovimientoBancario, categorias_banco_de
+        categorias_banco_de(self.soc)
+        cuenta = CuentaBancaria.objects.create(sociedad=self.soc, banco="Banco de Chile", numero="9")
+        movs = [MovimientoBancario.objects.create(cuenta=cuenta, fecha=hoy().replace(day=1), monto=m, descripcion=d,
+                                                  huella=str(i))
+                for i, (m, d) in enumerate([(-5000000, "INVERSION DAP 30 DIAS"), (-40000, "PAGO ADAPTADOR ELECTRICO"),
+                                            (300000, "TRANSF DE CLIENTE")])]
+        aplicar_reglas(self.soc, movs)
+        dap, adaptador, _ = [MovimientoBancario.objects.get(pk=m.pk) for m in movs]
+        self.assertEqual((dap.categoria.nombre, dap.categoria.flujo), ("Depósitos a plazo (DAP)", "inversion"))
+        self.assertIsNone(adaptador.categoria)                   # «DAP» no calza dentro de «ADAPTADOR»
+        r = self.client.get(reverse("banco_resumen"))
+        self.assertEqual(r.context["secciones"][1]["total"], 40000)        # el DAP no es egreso
+        self.assertEqual(r.context["neto_total"], 300000 - 40000)
+        self.assertEqual(r.context["no_operacionales"][0]["total"], -5000000)
+        self.assertEqual(r.context["variacion_total"], 300000 - 40000 - 5000000)
+        r = self.client.get(reverse("banco"), {"cuenta": cuenta.pk, "mes": "todos"})
+        self.assertNotIn("Depósitos a plazo (DAP)", [n for n, _ in r.context["por_categoria"]["egresos"]])
 
 
 class CartolaSantanderTests(Base):

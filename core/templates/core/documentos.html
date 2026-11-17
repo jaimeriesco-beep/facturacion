@@ -8,7 +8,8 @@
     {% if cotizaciones %}<a class="boton primario" href="{% url 'documento_nuevo' COTIZACION %}">Nueva cotización</a>{% else %}
     <a class="boton primario" href="{% url 'documento_nuevo' 33 %}">Nueva factura</a>
     <a class="boton" href="{% url 'documento_nuevo' 34 %}">Nueva factura exenta</a>
-    <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>{% endif %}
+    <a class="boton" href="{% url 'documento_nuevo' 52 %}">Nueva guía de despacho</a>
+    <a class="boton" href="{% url 'documento_nuevo' 2 %}" title="Para ingresos sin factura, como un arriendo de terreno por contrato">Comprobante de ingreso</a>{% endif %}
   </div>
 </div>
 {% if deshacer %}<div class="aviso aviso-deshacer"><span>{{ deshacer }} está en la papelera.</span>

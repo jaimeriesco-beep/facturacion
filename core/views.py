@@ -27,6 +27,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 
 from . import marketing, resumen
+from .paginas import paginar
 from . import inventario
 from .dte import servicio
 from .dte.motor import ErrorDTE
@@ -446,14 +447,22 @@ def documentos(request, cotizaciones=False):
         if q.isdigit():
             filtro |= Q(folio=int(q))
         qs = qs.filter(filtro)
+    meses = [f"{f:%Y-%m}" for f in base.ventas().dates("fecha_emision", "month", order="DESC")] \
+        if not cotizaciones else [f"{f:%Y-%m}" for f in base.cotizaciones().dates("fecha_emision", "month", order="DESC")]
+    mes = request.GET.get("mes", "")
+    if mes in meses:
+        anio, m = mes.split("-")
+        qs = qs.filter(fecha_emision__year=int(anio), fecha_emision__month=int(m))
     _purgar(request.sociedad)
     deshacer = request.session.pop("deshacer_papelera", None)
     deshacer = (Documento.todos.filter(pk=deshacer, sociedad=request.sociedad,
                                        eliminado_el__isnull=False).first() if deshacer else None)
-    documentos = list(qs[:500])
+    pagina, ctx_paginas = paginar(request, qs)
     return render(request, "core/documentos.html", {
-        "documentos": documentos, "deshacer": deshacer, "tipos": [t for t in TIPOS if t[0] != COTIZACION],
+        "documentos": list(pagina), **ctx_paginas, "deshacer": deshacer,
+        "tipos": [t for t in TIPOS if t[0] != COTIZACION],
         "estados": Documento.ESTADOS[:2], "tipo": tipo, "estado": estado, "q": q,
+        "meses": [(m, f"{MESES[int(m[5:]) - 1].capitalize()} {m[:4]}") for m in meses], "mes": mes,
         "cotizaciones": cotizaciones, "COTIZACION": COTIZACION})
 
 

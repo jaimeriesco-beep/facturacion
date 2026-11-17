@@ -1445,6 +1445,23 @@ class ComprasTests(Base):
         self.assertEqual(lista.context["gasto"], 100000 + 25000 - 10000)
         self.assertEqual(lista.context["iva"], 19000 - 1900)
 
+    def test_no_duplica_compras_manuales_filas_repetidas_ni_retrocede_estado(self):
+        from .models import Compra, Proveedor
+        prov = Proveedor.objects.create(sociedad=self.soc, rut="76192083-9", razon_social="Semillas")
+        Compra.objects.create(sociedad=self.soc, proveedor=prov, tipo=33, folio=1234, origen="manual",
+                              estado_rcv="manual", fecha_emision=date(2026, 11, 5), periodo="2026-11",
+                              neto=100000, iva=19000, total=119000)
+        lineas = RCV_EJEMPLO.decode("cp1252").splitlines()
+        repetido = "\n".join(lineas + [lineas[1]]).encode("cp1252")      # misma factura dos veces en el archivo
+        r = self.importar(repetido)
+        self.assertContains(r, "2 nuevas")
+        self.assertContains(r, "ingresado a mano")
+        self.assertEqual(Compra.objects.filter(folio=1234).count(), 1)
+        self.assertEqual(Compra.objects.get(folio=1234).estado_rcv, "registro")
+        self.importar(nombre="RCV_COMPRA_PENDIENTE_77552628-9_202611.csv")
+        self.assertEqual(Compra.objects.count(), 3)
+        self.assertEqual(Compra.objects.get(folio=1234).estado_rcv, "registro")
+
     def test_archivo_que_no_es_rcv(self):
         r = self.importar(b"a;b;c\n1;2;3\n", "otro.csv")
         self.assertContains(r, "no parece un detalle de compras")
@@ -1681,6 +1698,93 @@ class CategoriasYReglasTests(Base):
                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         r = self.client.get(reverse("banco"), {"mes": "todos", "categoria": "sin"})
         self.assertEqual(len(r.context["movimientos"]), 3)
+
+
+RCV_VENTAS = (
+    "Nro;Tipo Doc;Tipo Venta;Rut cliente;Razon Social;Folio;Fecha Docto;Fecha Recepcion;Fecha Acuse Recibo;"
+    "Fecha Reclamo;Monto Exento;Monto Neto;Monto IVA;Monto total;IVA Retenido Total;Tipo Docto. Referencia;"
+    "Folio Docto. Referencia\n"
+    "1;33;Del Giro;{rut};CLIENTE UNO;10;03/11/2026;03/11/2026 10:00:00;;;0;100000;19000;119000;0;;\n"
+    "2;33;Del Giro;76086428-5;AGUAS ANDINAS S.A.;11;04/11/2026;04/11/2026 10:00:00;;;0;50000;9500;59500;0;;\n"
+    "3;61;Del Giro;76086428-5;AGUAS ANDINAS S.A.;3;05/11/2026;05/11/2026 10:00:00;;;0;50000;9500;59500;0;33;11\n"
+    "4;39;Del Giro;66666666-6;BOLETAS;1;05/11/2026;;;;0;1000;190;1190;0;;\n"
+    "5;33;Del Giro;76086428-5;AGUAS ANDINAS S.A.;11;04/11/2026;04/11/2026 10:00:00;;;0;50000;9500;59500;0;;\n"
+)
+
+
+class VentasSIITests(Base):
+    def importar(self, contenido):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("ventas_importar"), {
+            "archivos": [SimpleUploadedFile("RCV_VENTA_77552628-9_202611.csv", contenido, content_type="text/csv")]})
+
+    def test_modulo_opcional(self):
+        r = self.client.get(reverse("ventas_importar"))
+        self.assertContains(r, "Módulo opcional")
+        self.client.post(reverse("ventas_importar"), {"accion": "activar"})     # cuenta básica: no puede
+        self.soc.refresh_from_db()
+        self.assertFalse(self.soc.ventas_sii_activo)
+        self.user.is_superuser = True
+        self.user.save()
+        self.client.post(reverse("ventas_importar"), {"accion": "activar"})
+        self.soc.refresh_from_db()
+        self.assertTrue(self.soc.ventas_sii_activo)
+
+    def test_no_duplica_facturas_de_la_plataforma_ni_reimportaciones(self):
+        self.soc.ventas_sii_activo = True
+        self.soc.save()
+        propia = self.factura(folio=10)                         # emitida desde la app: 119.000
+        self.assertEqual(propia.estado, Documento.EMITIDO)
+        contenido = RCV_VENTAS.format(rut=self.cli.rut).encode("cp1252")
+        r = self.importar(contenido)
+        self.assertContains(r, "2 documentos nuevos")
+        self.assertContains(r, "1 ya estaba en la plataforma")
+        self.assertContains(r, "no se importa")             # la boleta
+        self.assertEqual(Documento.objects.filter(tipo=FACTURA, folio=10).count(), 1)
+        propia.refresh_from_db()
+        self.assertFalse(propia.importado_sii)
+        f11 = Documento.objects.get(folio=11, tipo=FACTURA)
+        self.assertEqual((f11.total, f11.estado_sii, f11.importado_sii, f11.cliente.razon_social),
+                         (59500, "portal", True, "AGUAS ANDINAS S.A."))
+        nc = Documento.objects.get(tipo=61, folio=3)
+        self.assertEqual((nc.referencia, nc.codigo_referencia), (f11, 1))
+        self.assertEqual(Documento.objects.con_saldo().get(pk=f11.pk).saldo_a, 0)
+        r = self.importar(contenido)                             # el mismo mes otra vez
+        self.assertContains(r, "0 documentos nuevos")
+        self.assertEqual(Documento.objects.ventas().count(), 3)
+
+    def test_avisa_diferencia_de_monto_y_rechaza_archivo_de_compras(self):
+        self.soc.ventas_sii_activo = True
+        self.soc.save()
+        self.factura(folio=10, lineas=((1, 90000, False),))
+        r = self.importar(RCV_VENTAS.format(rut=self.cli.rut).encode("cp1252"))
+        self.assertContains(r, "total distinto")
+        self.assertContains(self.importar(RCV_EJEMPLO), "registro de COMPRAS")
+
+
+class PaginacionTests(Base):
+    def test_listados_de_50_con_paginas_y_filtro_opcional_por_mes(self):
+        from .models import Compra, Proveedor
+        for i in range(55):
+            Documento.objects.create(sociedad=self.soc, cliente=self.cli, tipo=FACTURA, folio=100 + i,
+                                     estado=Documento.EMITIDO, fecha_emision=date(2026, 10 + (i < 5), 1 + i % 28))
+        r = self.client.get(reverse("documentos"))
+        self.assertEqual((len(r.context["documentos"]), r.context["pagina"].paginator.count), (50, 55))
+        self.assertContains(r, "1–50 de 55")
+        r = self.client.get(reverse("documentos"), {"pagina": 2})
+        self.assertEqual(len(r.context["documentos"]), 5)
+        r = self.client.get(reverse("documentos"), {"mes": "2026-11"})
+        self.assertEqual(r.context["pagina"].paginator.count, 5)
+        prov = Proveedor.objects.create(sociedad=self.soc, rut="76192083-9", razon_social="Semillas")
+        for i in range(52):
+            Compra.objects.create(sociedad=self.soc, proveedor=prov, tipo=33, folio=i + 1,
+                                  fecha_emision=date(2026, 9 + i % 2, 1), periodo=f"2026-{9 + i % 2:02d}",
+                                  neto=1000, iva=190, total=1190)
+        r = self.client.get(reverse("compras"))
+        self.assertEqual((len(r.context["compras"]), r.context["n_total"]), (50, 52))
+        self.assertEqual(r.context["gasto"], 52 * 1000)        # los totales consideran todo, no solo la página
+        r = self.client.get(reverse("compras"), {"periodo": "2026-09"})
+        self.assertEqual(r.context["n_total"], 26)
 
 
 class CartolaSantanderTests(Base):

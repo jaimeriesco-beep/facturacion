@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from . import compras as rcv
+from .paginas import paginar
 from .forms import Fecha, FormBase
 from .models import (TIPOS_COMPRA, CategoriaGasto, Compra, Pago, PagoCompra, Proveedor,
                      categorias_de, hoy)
@@ -40,7 +41,7 @@ def compras(request):
     qs = soc.compras.select_related("proveedor", "categoria").con_saldo()
     periodos = sorted(soc.compras.values_list("periodo", flat=True).distinct(), reverse=True)
     g = request.GET
-    periodo = g.get("periodo", periodos[0] if periodos else "")
+    periodo = g.get("periodo", "")
     if periodo and periodo != "todos":
         qs = qs.filter(periodo=periodo)
     if q := g.get("q", "").strip():
@@ -72,8 +73,9 @@ def compras(request):
                         c.signo * c.neto, c.signo * c.iva, c.signo * c.iva_no_recuperable,
                         c.signo * c.otros_impuestos, c.signo * c.total, c.pagado, c.saldo,
                         c.fecha_vencimiento, c.get_estado_rcv_display()] for c in filas])
+    pagina, ctx_paginas = paginar(request, filas)
     return render(request, "core/compras/compras.html", {
-        "compras": filas, "categorias": categorias, "periodos": [(p, _nombre_periodo(p)) for p in periodos],
+        "compras": list(pagina), **ctx_paginas, "n_total": len(filas), "categorias": categorias, "periodos": [(p, _nombre_periodo(p)) for p in periodos],
         "periodo": periodo, "g": g, "medios": Pago.MEDIOS,
         "gasto": sum(c.gasto for c in filas), "iva": sum(c.signo * c.iva for c in filas),
         "por_pagar": sum(c.saldo for c in filas),

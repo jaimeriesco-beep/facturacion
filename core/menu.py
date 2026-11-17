@@ -10,6 +10,7 @@ GRUPOS = [
         ("cobranza", "Cobranza", "Por cobrar, recordatorios y pagos", []),
         ("recurrentes", "Facturación recurrente", "Arriendos y servicios mensuales",
          ["recurrente_nueva", "recurrente_editar"]),
+        ("ventas_importar", "Importar desde el SII", "Registro de Ventas (RCV)", []),
         ("clientes", "Clientes", "Datos y contactos", ["cliente_nuevo", "cliente_editar", "clientes_importar"]),
         ("papelera", "Papelera", "Documentos eliminados (30 días)", []),
     ]),
@@ -60,6 +61,9 @@ def construir(request):
             if nombre == "usuarios" and not request.user.is_superuser:
                 continue
             if nombre in ("inventario_stock", "inventario_movimientos") and not inventario:
+                continue
+            if nombre == "ventas_importar" and not (sociedad and sociedad.ventas_sii_activo) \
+                    and not request.user.is_superuser:
                 continue
             visibles.append({"url": reverse(nombre), "titulo": texto, "descripcion": descripcion,
                              "activo": actual == nombre or actual in otras})

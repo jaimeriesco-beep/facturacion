@@ -16,6 +16,7 @@
   <a href="{% url 'papelera' %}">Ver papelera</a></div>{% endif %}
 <form class="filtros" method="get">
   <input type="search" name="q" value="{{ q }}" placeholder="Cliente, RUT o folio">
+  <select name="mes" aria-label="Mes" onchange="this.form.submit()"><option value="">Todos los meses</option>{% for v, n in meses %}<option value="{{ v }}" {% if mes == v %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
   {% if not cotizaciones %}<select name="tipo"><option value="">Todos los tipos</option>{% for codigo, nombre in tipos %}<option value="{{ codigo }}" {% if tipo == codigo|stringformat:"s" %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>{% endif %}
   <select name="estado"><option value="">Todos los estados</option>{% for codigo, nombre in estados %}<option value="{{ codigo }}" {% if estado == codigo %}selected{% endif %}>{{ nombre }}</option>{% endfor %}</select>
   <button type="submit">Filtrar</button>
@@ -46,6 +47,7 @@
     {% endfor %}
     </tbody>
   </table>
+  {% include "core/_paginas.html" %}
   {% else %}<div class="vacio">{% if cotizaciones %}Aún no hay cotizaciones.{% else %}No hay documentos con esos filtros.{% endif %}</div>{% endif %}
 </div>
 {% include "core/_ventana.html" %}

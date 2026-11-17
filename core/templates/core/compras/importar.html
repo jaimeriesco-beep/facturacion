@@ -10,6 +10,7 @@
   {% if r.error %}<p class="error-texto">{{ r.error }}</p>
   {% else %}
   <p>{{ r.nuevas }} nueva{{ r.nuevas|pluralize }} · {{ r.actualizadas }} actualizada{{ r.actualizadas|pluralize }} · {{ r.sin_cambios }} sin cambios{% if r.proveedores_nuevos %} · {{ r.proveedores_nuevos }} proveedor{{ r.proveedores_nuevos|pluralize:"es" }} nuevo{{ r.proveedores_nuevos|pluralize }}{% endif %}{% if r.periodos %} · {{ r.periodos|join:", " }}{% endif %}</p>
+  {% if r.actualizadas or r.sin_cambios %}<p class="ayuda">No se duplicó nada: {{ r.actualizadas|add:r.sin_cambios }} documento{{ r.actualizadas|add:r.sin_cambios|pluralize }} ya estaba{{ r.actualizadas|add:r.sin_cambios|pluralize:"n" }} cargado{{ r.actualizadas|add:r.sin_cambios|pluralize }} (mismo proveedor, tipo y folio){% if r.manuales %}, {{ r.manuales }} ingresado{{ r.manuales|pluralize }} a mano y ahora completado{{ r.manuales|pluralize }} con los datos del SII{% endif %}.</p>{% endif %}
   {% if r.errores %}<details><summary>{{ r.errores|length }} fila{{ r.errores|length|pluralize }} con problemas</summary><ul>{% for e in r.errores %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}
   {% endif %}
 </div>

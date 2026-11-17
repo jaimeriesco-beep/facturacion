@@ -18,9 +18,9 @@
 <div class="panel">
   <h2 class="grupo-cat">{{ grupo }} <span class="suave">· {{ cats|length }}</span></h2>
   <div class="lista-cat" role="table" aria-label="Categorías de {{ grupo }}">
-    <div class="fila-cat enc" role="row"><span role="columnheader">Nombre</span><span role="columnheader">Tipo</span><span role="columnheader">Grupo</span><span class="num" role="columnheader">Movim.</span><span class="num" role="columnheader">Total {{ anio }}</span><span role="columnheader">Reglas</span><span role="columnheader">Activa</span><span></span></div>
+    <div class="fila-categoria enc" role="row"><span role="columnheader">Nombre</span><span role="columnheader">Tipo</span><span role="columnheader">Grupo</span><span class="num" role="columnheader">Movim.</span><span class="num" role="columnheader">Total {{ anio }}</span><span role="columnheader">Reglas</span><span role="columnheader">Activa</span><span></span></div>
     {% for c in cats %}
-    <form method="post" class="fila-cat{% if not c.activa %} inactiva{% endif %}" role="row">{% csrf_token %}<input type="hidden" name="pk" value="{{ c.pk }}">
+    <form method="post" class="fila-categoria{% if not c.activa %} inactiva{% endif %}" role="row">{% csrf_token %}<input type="hidden" name="pk" value="{{ c.pk }}">
       <input name="nombre" value="{{ c.nombre }}" maxlength="60" required aria-label="Nombre de la categoría">
       <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}" {% if v == c.tipo %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
       <input name="grupo" value="{{ c.grupo }}" list="grupos-sugeridos" maxlength="60" placeholder="Sin grupo" aria-label="Grupo">

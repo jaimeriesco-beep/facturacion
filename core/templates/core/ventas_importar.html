@@ -1,0 +1,50 @@
+{% extends "core/base.html" %}
+{% block titulo %}Importar ventas del SII{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'documentos' %}">← Documentos de venta</a></p>
+<div class="titulo"><h1>Importar ventas desde el SII</h1>
+  {% if not inactivo and request.user.is_superuser %}<div class="acciones"><form method="post" onsubmit="return confirm('¿Desactivar la importación de ventas? Lo ya importado se mantiene.')">{% csrf_token %}<button type="submit" name="accion" value="desactivar" class="boton">Desactivar módulo</button></form></div>{% endif %}
+</div>
+{% if inactivo %}
+<div class="panel" style="max-width:720px">
+  <h2>Módulo opcional</h2>
+  <p>Trae a la app las facturas, notas de crédito y notas de débito emitidas <strong>fuera de la plataforma</strong> (por ejemplo, en el sistema gratuito del SII), usando el archivo del Registro de Compras y Ventas. Así quedan en cobranza, reportes y conciliación bancaria.</p>
+  <p>Los documentos que ya están en la plataforma (emitidos aquí o registrados antes) se reconocen por tipo y folio y <strong>no se duplican</strong>.</p>
+  {% if request.user.is_superuser %}
+  <form method="post">{% csrf_token %}<button type="submit" name="accion" value="activar" class="primario">Activar para {{ sociedad_actual }}</button></form>
+  {% else %}<p class="suave">Pídele a un administrador que lo active.</p>{% endif %}
+</div>
+{% else %}
+{% for r in resultados %}
+<div class="panel resultado-import{% if r.error %} con-error{% endif %}">
+  <strong>{{ r.archivo }}</strong>
+  {% if r.error %}<p class="error-texto">{{ r.error }}</p>
+  {% else %}
+  <p>{{ r.nuevas }} documento{{ r.nuevas|pluralize }} nuevo{{ r.nuevas|pluralize }} · {{ r.repetidas }} ya estaba{{ r.repetidas|pluralize:"n" }} en la plataforma{% if r.clientes_nuevos %} · {{ r.clientes_nuevos }} cliente{{ r.clientes_nuevos|pluralize }} nuevo{{ r.clientes_nuevos|pluralize }}{% endif %}{% if r.periodos %} · {{ r.periodos|join:", " }}{% endif %}</p>
+  {% if r.repetidas %}<p class="ayuda">No se duplicó nada: los {{ r.repetidas }} documento{{ r.repetidas|pluralize }} que ya existían (mismo tipo y folio) se dejaron tal como estaban{% if r.en_papelera %}; {{ r.en_papelera }} está{{ r.en_papelera|pluralize:"n" }} en la papelera{% endif %}.</p>{% endif %}
+  {% if r.otros_tipos %}<p class="ayuda">{{ r.otros_tipos }} fila{{ r.otros_tipos|pluralize }} de otros tipos (boletas, exportación, etc.) no se importa{{ r.otros_tipos|pluralize:"n" }}.</p>{% endif %}
+  {% if r.diferencias %}<div class="aviso">Documentos que ya existían pero con un total distinto al del SII. Revísalos:<ul>{% for d in r.diferencias %}<li>{{ d }}</li>{% endfor %}</ul></div>{% endif %}
+  {% if r.errores %}<details><summary>{{ r.errores|length }} fila{{ r.errores|length|pluralize }} con problemas</summary><ul>{% for e in r.errores %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+{% if resultados %}<p><a class="boton primario" href="{% url 'documentos' %}">Ver los documentos</a></p>{% endif %}
+<div class="dos">
+  <form method="post" enctype="multipart/form-data" class="panel">{% csrf_token %}
+    <h2>Subir archivos</h2>
+    <div class="campo"><label for="id_archivos">{{ form.archivos.label }}</label>{{ form.archivos }}{{ form.archivos.errors }}<p class="ayuda">Puedes subir varios meses a la vez. Si subes un mes que ya estaba, o facturas emitidas desde la app, no se duplican.</p></div>
+    <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Importar</button></div>
+  </form>
+  <div class="panel pasos-sii">
+    <h2>Cómo descargarlo del SII</h2>
+    <ol>
+      <li>Entra a <strong>sii.cl</strong> → <em>Servicios online</em> → <em>Factura electrónica</em> → <em>Registro de compras y ventas</em>, con el RUT de {{ sociedad_actual }}.</li>
+      <li>Elige el <strong>período</strong> (mes y año) y presiona <em>Consultar</em>.</li>
+      <li>En la pestaña <strong>Ventas</strong>, presiona <em>Descargar detalles</em>. Se baja un archivo como <code>RCV_VENTA_{{ sociedad_actual.rut|default:"RUT" }}_AAAAMM.csv</code>.</li>
+      <li>Súbelo aquí.</li>
+    </ol>
+    <p class="ayuda">Se importan facturas afectas y exentas, notas de crédito y notas de débito, con sus montos. No traen el detalle de productos, así que no mueven el inventario. Quedan marcadas como «Emitido en portal SII».</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

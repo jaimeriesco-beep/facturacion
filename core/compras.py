@@ -130,7 +130,7 @@ def importar(sociedad, contenido, nombre_archivo="", estado=None, periodo=None):
     estado = estado or estado_nombre or "registro"
     periodo = periodo or periodo_nombre
     categorias_de(sociedad)
-    resumen = {"nuevas": 0, "actualizadas": 0, "sin_cambios": 0, "proveedores_nuevos": 0,
+    resumen = {"nuevas": 0, "actualizadas": 0, "sin_cambios": 0, "proveedores_nuevos": 0, "manuales": 0,
                "errores": [], "periodos": set()}
     for f in leer(contenido):
         try:
@@ -172,6 +172,10 @@ def importar(sociedad, contenido, nombre_archivo="", estado=None, periodo=None):
                 fecha_vencimiento=fecha + timedelta(days=proveedor.dias_pago), **campos)
             resumen["nuevas"] += 1
         else:
+            if compra.estado_rcv in ("registro", "reclamado") and estado == "pendiente":
+                campos["estado_rcv"] = compra.estado_rcv   # un archivo de pendientes antiguo no lo devuelve atrás
+            if compra.origen == "manual" and compra.estado_rcv == "manual":
+                resumen["manuales"] += 1                    # ya estaba ingresada a mano: se completa con el SII
             cambios = {k: v for k, v in campos.items() if getattr(compra, k) != v}
             if cambios:
                 for k, v in cambios.items():

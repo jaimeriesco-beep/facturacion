@@ -86,6 +86,10 @@ class Sociedad(ConRut):
     gracias_asunto = models.CharField("Asunto", max_length=120,
                                       default="Gracias por tu compra y por preferirnos")
     gracias_mensaje = models.TextField("Mensaje", default=MENSAJE_GRACIAS)
+    # Importar ventas desde el Registro de Compras y Ventas del SII (módulo opcional)
+    ventas_sii_activo = models.BooleanField(
+        "Importar ventas desde el SII", default=False,
+        help_text="Para traer las facturas emitidas fuera de la app (por ejemplo, en el sistema gratuito del SII).")
     # Inventario (módulo opcional por sociedad)
     inventario_activo = models.BooleanField("Usar el módulo de inventario", default=False)
     inventario_desde = models.DateField(
@@ -294,6 +298,7 @@ class Documento(models.Model):
     patente = models.CharField("Patente del vehículo", max_length=8, blank=True)
     # Emisión electrónica propia.
     estado_sii = models.CharField("Estado SII", max_length=10, choices=SII, blank=True)
+    importado_sii = models.BooleanField(default=False, editable=False)  # traído del RCV de ventas
     es_prueba = models.BooleanField(default=False)  # emitido en ambiente de certificación
     caso_set = models.CharField(
         "Caso del set de pruebas", max_length=30, blank=True,

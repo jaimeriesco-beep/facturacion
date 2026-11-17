@@ -1,0 +1,12 @@
+{% if pagina.paginator.count %}
+<nav class="paginas" aria-label="Páginas">
+  <span class="suave">{{ pagina.start_index }}–{{ pagina.end_index }} de {{ pagina.paginator.count }}</span>
+  {% if pagina.paginator.num_pages > 1 %}
+  <span class="paginas-botones">
+    {% if pagina.has_previous %}<a class="boton chico" href="?{% if qs_sin_pagina %}{{ qs_sin_pagina }}&{% endif %}pagina={{ pagina.previous_page_number }}" aria-label="Página anterior">‹ Anterior</a>{% endif %}
+    {% for n in pagina.paginator.get_elided_page_range %}{% if n == pagina.number %}<span class="boton chico activo" aria-current="page">{{ n }}</span>{% elif n == pagina.paginator.ELLIPSIS %}<span class="suave">…</span>{% else %}<a class="boton chico" href="?{% if qs_sin_pagina %}{{ qs_sin_pagina }}&{% endif %}pagina={{ n }}">{{ n }}</a>{% endif %}{% endfor %}
+    {% if pagina.has_next %}<a class="boton chico" href="?{% if qs_sin_pagina %}{{ qs_sin_pagina }}&{% endif %}pagina={{ pagina.next_page_number }}" aria-label="Página siguiente">Siguiente ›</a>{% endif %}
+  </span>
+  {% endif %}
+</nav>
+{% endif %}

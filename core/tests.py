@@ -1950,8 +1950,9 @@ class RayoTests(Base):
         r = self.client.get(reverse("banco_sugerencias"))
         self.assertContains(r, "Conciliar todas (2)")
         self.assertContains(self.client.get(reverse("inicio")), "2 sugerencias de conciliación")
-        self.client.post(reverse("banco_sugerencias"), {"accion": "conciliar", "par": [
-            f"{self.m_nombre.pk}:v:{self.f1.pk}", f"{self.m_compra.pk}:c:{self.compra.pk}"]})
+        self.client.post(reverse("banco_sugerencias"), {"accion": "todas", "tipo": "c"})   # solo las compras
+        self.assertEqual([x["tipo"] for x in sugerencias_automaticas(self.soc)], ["v"])
+        self.client.post(reverse("banco_sugerencias"), {"accion": "todas"})
         self.assertEqual(Documento.objects.con_saldo().get(pk=self.f1.pk).saldo_a, 0)
         from .models import Compra
         self.assertEqual(Compra.objects.con_saldo().get(pk=self.compra.pk).saldo, 0)

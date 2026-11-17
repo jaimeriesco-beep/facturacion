@@ -6,10 +6,10 @@
   <div><h1>⚡ Sugerencias de conciliación</h1>
   <p class="suave" style="margin:4px 0 0">Movimientos del banco que calzan con una factura de venta o una compra por el mismo monto pendiente. Revísalas y apruébalas una a una o todas a la vez.</p></div>
   {% if sugerencias %}
-  <form method="post" class="acciones" onsubmit="return confirm('¿Conciliar las {{ sugerencias|length }} sugerencias de esta página?')">{% csrf_token %}
-    <input type="hidden" name="accion" value="conciliar">
-    {% for s in sugerencias %}<input type="hidden" name="par" value="{{ s.mov.pk }}:{{ s.tipo }}:{{ s.doc.pk }}">{% endfor %}
-    <button type="submit" class="primario">⚡ Conciliar todas ({{ sugerencias|length }})</button>
+  <form method="post" class="acciones" onsubmit="return confirm('¿Conciliar las {{ total }} sugerencias{% if g.tipo or g.motivo %} que cumplen el filtro{% endif %}? Se registrarán los cobros y pagos con la fecha del banco.')">{% csrf_token %}
+    <input type="hidden" name="accion" value="todas">
+    <input type="hidden" name="tipo" value="{{ g.tipo }}"><input type="hidden" name="motivo" value="{{ g.motivo }}">
+    <button type="submit" class="primario">⚡ Conciliar todas ({{ total }})</button>
   </form>
   {% endif %}
 </div>

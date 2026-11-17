@@ -598,6 +598,14 @@ def _doc_de(soc, tipo, pk):
     return base.filter(pk=pk).first() if str(pk).isdigit() else None
 
 
+def _filtrar_sugerencias(lista, datos):
+    if datos.get("tipo") in ("v", "c"):
+        lista = [x for x in lista if x["tipo"] == datos["tipo"]]
+    if datos.get("motivo") in ("descripcion", "monto"):
+        lista = [x for x in lista if x["motivo"] == datos["motivo"]]
+    return lista
+
+
 @con_sociedad
 def sugerencias(request):
     from .models import SugerenciaRechazada
@@ -605,6 +613,10 @@ def sugerencias(request):
     if request.method == "POST":
         que = request.POST.get("accion")
         pares = request.POST.getlist("par")          # «mov:tipo:doc»
+        if que == "todas":                           # todas las sugerencias (con los filtros elegidos), no solo la página
+            pares = [f"{x['mov'].pk}:{x['tipo']}:{x['doc'].pk}"
+                     for x in _filtrar_sugerencias(banco.sugerencias_automaticas(soc), request.POST)]
+            que = "conciliar"
         hechas = 0
         for par in pares:
             try:
@@ -627,12 +639,7 @@ def sugerencias(request):
             messages.success(request, f"{hechas} movimiento{'s' if hechas != 1 else ''} conciliado{'s' if hechas != 1 else ''}; "
                                       "los cobros y pagos quedaron registrados.")
         return redirect("banco_sugerencias")
-    lista = banco.sugerencias_automaticas(soc)
-    tipo = request.GET.get("tipo", "")
-    if tipo in ("v", "c"):
-        lista = [x for x in lista if x["tipo"] == tipo]
-    if request.GET.get("motivo") in ("descripcion", "monto"):
-        lista = [x for x in lista if x["motivo"] == request.GET["motivo"]]
+    lista = _filtrar_sugerencias(banco.sugerencias_automaticas(soc), request.GET)
     pagina, ctx_paginas = paginar(request, lista, 20)
     return render(request, "core/banco/sugerencias.html", {
         "sugerencias": list(pagina), **ctx_paginas, "total": len(lista), "g": request.GET})

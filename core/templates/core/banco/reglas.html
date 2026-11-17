@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Banco · reglas automáticas{% endblock %}
+{% block contenido %}
+{% include "core/banco/_pestanas.html" %}
+<div class="barra-reglas">
+  <p class="suave">Cada movimiento nuevo se compara con las reglas en orden de prioridad (número menor primero) y toma la categoría de la primera que coincide. Los movimientos ya categorizados o conciliados no se tocan.</p>
+  <div class="acciones">
+    {% if sin_categoria and reglas %}<form method="post">{% csrf_token %}<input type="hidden" name="accion" value="aplicar"><button type="submit" class="boton">Aplicar a {{ sin_categoria }} sin categoría</button></form>{% endif %}
+    <a class="boton primario" href="{% url 'banco_regla_nueva' %}">Nueva regla</a>
+  </div>
+</div>
+{% if sugeridas %}
+<div class="panel sugerencias">
+  <h2>Reglas sugeridas</h2>
+  <p class="suave" style="margin-top:-4px">Movimientos sin categoría que se repiten. Crea una regla y se categorizan solos de aquí en adelante.</p>
+  <table>
+    <thead><tr><th>Descripción que se repite</th><th class="num">Veces</th><th class="num">Monto total</th><th></th></tr></thead>
+    <tbody>{% for s in sugeridas %}
+      <tr><td><code>{{ s.texto }}</code> <span class="etiqueta">{% if s.solo == 'cargo' %}cargos{% elif s.solo == 'abono' %}abonos{% else %}cargos y abonos{% endif %}</span></td>
+        <td class="num">{{ s.n }}</td><td class="num">{{ s.total|clp }}</td>
+        <td class="num"><a class="boton chico" href="{% url 'banco_regla_nueva' %}?texto={{ s.texto|urlencode }}&solo={{ s.solo }}">Crear regla</a></td></tr>
+    {% endfor %}</tbody>
+  </table>
+</div>
+{% endif %}
+<div class="panel tabla-panel">
+  {% if reglas %}
+  <table class="tabla-reglas">
+    <thead><tr><th class="num">Prioridad</th><th>Si la descripción contiene</th><th>Condiciones</th><th>Categoría</th><th class="num">Aplicada</th><th>Estado</th><th></th></tr></thead>
+    <tbody>{% for r in reglas %}
+      <tr id="cat-{{ r.categoria_id }}"{% if not r.activa %} class="inactiva"{% endif %}>
+        <td class="num">{{ r.prioridad }}</td>
+        <td><a href="{% url 'banco_regla' r.pk %}">{% for p in r.texto_lista %}<strong>«{{ p }}»</strong>{% if not forloop.last %} o {% endif %}{% endfor %}</a>{% if r.nota %}<div class="ayuda">{{ r.nota }}</div>{% endif %}</td>
+        <td class="suave">{{ r.condiciones|default:"—" }}</td>
+        <td><span class="etiqueta">{{ r.categoria }}</span></td>
+        <td class="num">{{ r.veces }} {{ r.veces|pluralize:"vez,veces" }}</td>
+        <td><form method="post">{% csrf_token %}<input type="hidden" name="accion" value="activar"><input type="hidden" name="pk" value="{{ r.pk }}">
+          <button type="submit" class="interruptor{% if r.activa %} encendido{% endif %}" role="switch" aria-checked="{{ r.activa|yesno:'true,false' }}" title="{{ r.activa|yesno:'Desactivar,Activar' }}"><i></i>{{ r.activa|yesno:"Activa,Pausada" }}</button></form></td>
+        <td><div class="acciones-fila"><a class="boton chico" href="{% url 'banco_regla' r.pk %}">Editar</a>
+          <form method="post" onsubmit="return confirm('¿Eliminar esta regla? Los movimientos ya categorizados no cambian.')">{% csrf_token %}<input type="hidden" name="accion" value="borrar"><input type="hidden" name="pk" value="{{ r.pk }}"><button type="submit" class="icono-accion basurero" aria-label="Eliminar regla"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button></form></div></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}
+  <p class="vacio">Aún no hay reglas. Crea la primera, usa una sugerida, o créala al categorizar un movimiento.</p>
+  {% endif %}
+</div>
+{% endblock %}

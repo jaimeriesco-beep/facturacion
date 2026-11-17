@@ -5,7 +5,8 @@
 <div class="titulo">
   <h1>Banco</h1>
   <div class="acciones">
-    <a class="boton" href="{% url 'banco_configuracion' %}">Categorías y reglas</a>
+    <a class="boton" href="{% url 'banco_resumen' %}">Resumen por categoría</a>
+    <a class="boton" href="{% url 'banco_reglas' %}">Reglas</a>
     <a class="boton primario" href="{% url 'banco_importar' %}">Subir cartola</a>
   </div>
 </div>
@@ -20,6 +21,7 @@
 </div>
 <form class="filtros" method="get">
   <input type="hidden" name="cuenta" value="{{ cuenta.pk }}">
+  {% if g.categoria %}<input type="hidden" name="categoria" value="{{ g.categoria }}">{% endif %}
   <select name="mes" onchange="this.form.submit()" aria-label="Mes">{% for v, n in meses %}<option value="{{ v }}" {% if mes == v %}selected{% endif %}>{{ n }}</option>{% endfor %}<option value="todos" {% if mes == 'todos' %}selected{% endif %}>Todos los meses</option></select>
   <input type="search" name="q" value="{{ g.q }}" placeholder="Buscar en la descripción" aria-label="Buscar">
   <select name="estado" onchange="this.form.submit()" aria-label="Estado">

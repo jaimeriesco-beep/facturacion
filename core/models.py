@@ -10,7 +10,7 @@ from django.db.models import BigIntegerField, Count, F, OuterRef, Q, Subquery, S
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .utils import MESES, formatear_rut, normalizar_rut, redondear
+from .utils import MESES, formatear_clp, formatear_rut, normalizar_rut, redondear
 
 FACTURA, FACTURA_EXENTA, GUIA, NOTA_DEBITO, NOTA_CREDITO = 33, 34, 52, 56, 61
 COTIZACION = 1  # documento interno, no tributario: no existe para el SII
@@ -1007,14 +1007,27 @@ class PagoCompra(models.Model):
 
 # ---------------------------------------------------------------- Banco
 
+GRUPOS_BANCO = ["Ingresos operacionales", "Costos de producción", "Remuneraciones",
+                "Impuestos y contribuciones", "Gastos de administración", "Gastos financieros",
+                "Movimientos con socios", "Movimientos internos", "Otros"]
+
+# (nombre, tipo, grupo)
 CATEGORIAS_BANCO = [
-    ("Cobro a clientes", "ingreso"), ("Pago a proveedores", "egreso"),
-    ("Sueldos y honorarios", "egreso"), ("Previsión (AFP, salud, seguro de cesantía)", "egreso"),
-    ("Impuestos (F29, PPM, renta)", "egreso"), ("Contribuciones", "egreso"), ("Arriendo", "egreso"),
-    ("Comisiones y gastos bancarios", "egreso"), ("Créditos y préstamos", "ambos"),
-    ("Traspasos entre cuentas propias", "ambos"), ("Retiros de socios", "egreso"),
-    ("Aportes de socios", "ingreso"), ("Seguros", "egreso"), ("Otros ingresos", "ingreso"),
-    ("Otros egresos", "egreso"),
+    ("Cobro a clientes", "ingreso", "Ingresos operacionales"),
+    ("Pago a proveedores", "egreso", "Costos de producción"),
+    ("Sueldos y honorarios", "egreso", "Remuneraciones"),
+    ("Previsión (AFP, salud, seguro de cesantía)", "egreso", "Remuneraciones"),
+    ("Impuestos (F29, PPM, renta)", "egreso", "Impuestos y contribuciones"),
+    ("Contribuciones", "egreso", "Impuestos y contribuciones"),
+    ("Arriendo", "egreso", "Gastos de administración"),
+    ("Comisiones y gastos bancarios", "egreso", "Gastos financieros"),
+    ("Créditos y préstamos", "ambos", "Gastos financieros"),
+    ("Traspasos entre cuentas propias", "ambos", "Movimientos internos"),
+    ("Retiros de socios", "egreso", "Movimientos con socios"),
+    ("Aportes de socios", "ingreso", "Movimientos con socios"),
+    ("Seguros", "egreso", "Gastos de administración"),
+    ("Otros ingresos", "ingreso", "Otros"),
+    ("Otros egresos", "egreso", "Otros"),
 ]
 COBRO_CLIENTES, PAGO_PROVEEDORES = "Cobro a clientes", "Pago a proveedores"
 
@@ -1045,10 +1058,11 @@ class CategoriaBanco(models.Model):
     sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="categorias_banco")
     nombre = models.CharField(max_length=60)
     tipo = models.CharField(max_length=7, choices=TIPOS, default="ambos")
+    grupo = models.CharField(max_length=60, blank=True, help_text="Para agrupar en los resúmenes.")
     activa = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["nombre"]
+        ordering = ["grupo", "nombre"]
         constraints = [models.UniqueConstraint(fields=["sociedad", "nombre"], name="categoria_banco_unica")]
 
     def __str__(self):
@@ -1058,28 +1072,76 @@ class CategoriaBanco(models.Model):
 def categorias_banco_de(sociedad):
     if not sociedad.categorias_banco.exists():
         CategoriaBanco.objects.bulk_create(
-            [CategoriaBanco(sociedad=sociedad, nombre=n, tipo=t) for n, t in CATEGORIAS_BANCO])
+            [CategoriaBanco(sociedad=sociedad, nombre=n, tipo=t, grupo=g) for n, t, g in CATEGORIAS_BANCO])
     return sociedad.categorias_banco.filter(activa=True)
 
 
 class ReglaBanco(models.Model):
-    """Si la descripción del movimiento contiene `texto`, se le asigna la categoría."""
+    """Asigna una categoría a los movimientos cuya descripción contiene alguna de sus palabras,
+    y que cumplen las demás condiciones (tipo, rango de monto, cuenta)."""
+    SOLO = [("", "Cargos y abonos"), ("cargo", "Solo cargos"), ("abono", "Solo abonos")]
     sociedad = models.ForeignKey(Sociedad, on_delete=models.CASCADE, related_name="reglas_banco")
-    texto = models.CharField("Si la descripción contiene", max_length=80)
+    texto = models.CharField("Si la descripción contiene", max_length=200,
+                             help_text="Una o varias palabras separadas por coma: basta que aparezca una.")
     categoria = models.ForeignKey(CategoriaBanco, on_delete=models.CASCADE, related_name="reglas")
-    solo = models.CharField(max_length=6, blank=True, choices=[("", "Cargos y abonos"), ("cargo", "Solo cargos"),
-                                                               ("abono", "Solo abonos")])
+    solo = models.CharField("Aplica a", max_length=6, blank=True, choices=SOLO)
+    monto_min = models.BigIntegerField("Monto desde", null=True, blank=True)
+    monto_max = models.BigIntegerField("Monto hasta", null=True, blank=True)
+    cuenta = models.ForeignKey("CuentaBancaria", null=True, blank=True, on_delete=models.CASCADE,
+                               related_name="reglas", verbose_name="Solo en la cuenta")
+    prioridad = models.PositiveSmallIntegerField(
+        default=100, help_text="Si dos reglas coinciden, gana la de número menor.")
+    nota = models.CharField(max_length=120, blank=True)
+    activa = models.BooleanField(default=True)
+    veces = models.PositiveIntegerField(default=0, editable=False)
 
     class Meta:
-        ordering = ["texto"]
+        ordering = ["prioridad", "texto"]
 
     def __str__(self):
         return f"«{self.texto}» → {self.categoria}"
 
+    @property
+    def texto_lista(self):
+        return [p.strip() for p in self.texto.split(",") if p.strip()]
+
+    @property
+    def condiciones(self):
+        partes = [self.get_solo_display().lower()] if self.solo else []
+        if self.monto_min is not None and self.monto_max is not None:
+            partes.append(f"entre {formatear_clp(self.monto_min)} y {formatear_clp(self.monto_max)}")
+        elif self.monto_min is not None:
+            partes.append(f"desde {formatear_clp(self.monto_min)}")
+        elif self.monto_max is not None:
+            partes.append(f"hasta {formatear_clp(self.monto_max)}")
+        if self.cuenta_id:
+            partes.append(f"en {self.cuenta}")
+        return " · ".join(partes)
+
+    @property
+    def palabras(self):
+        return [_sin_tildes(p) for p in self.texto.split(",") if p.strip()]
+
     def aplica(self, movimiento):
+        if not self.activa:
+            return False
         if self.solo == "cargo" and movimiento.monto > 0 or self.solo == "abono" and movimiento.monto < 0:
             return False
-        return self.texto.lower() in movimiento.descripcion.lower()
+        if self.cuenta_id and movimiento.cuenta_id != self.cuenta_id:
+            return False
+        monto = abs(movimiento.monto)
+        if self.monto_min is not None and monto < self.monto_min:
+            return False
+        if self.monto_max is not None and monto > self.monto_max:
+            return False
+        descripcion = _sin_tildes(movimiento.descripcion)
+        return any(p in descripcion for p in self.palabras)
+
+
+def _sin_tildes(texto):
+    import unicodedata
+    texto = unicodedata.normalize("NFD", texto or "").encode("ascii", "ignore").decode()
+    return " ".join(texto.lower().split())
 
 
 class MovimientoBancario(models.Model):

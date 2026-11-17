@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Banco · resumen por categoría{% endblock %}
+{% block contenido %}
+{% include "core/banco/_pestanas.html" %}
+<form class="filtros" method="get">
+  <select name="meses" onchange="this.form.submit()" aria-label="Período">{% for n in opciones_meses %}<option value="{{ n }}" {% if n == n_meses %}selected{% endif %}>Últimos {{ n }} meses</option>{% endfor %}</select>
+  {% if cuentas|length > 1 %}<select name="cuenta" onchange="this.form.submit()" aria-label="Cuenta"><option value="">Todas las cuentas</option>{% for c in cuentas %}<option value="{{ c.pk }}" {% if cuenta == c.pk|stringformat:"s" %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>{% endif %}
+  <a class="boton" href="?meses={{ n_meses }}&cuenta={{ cuenta }}&formato=excel">Descargar Excel</a>
+</form>
+<div class="panel tabla-panel">
+<table class="tabla-resumen">
+  <thead><tr><th>Categoría</th>{% for m in meses %}<th class="num">{{ m.nombre }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+  {% for sec in secciones %}
+  <tbody>
+    <tr class="seccion"><th colspan="{{ n_meses|add:2 }}">{% if sec.tipo == 'ingresos' %}Ingresos{% else %}Egresos{% endif %}</th></tr>
+    {% for g in sec.grupos %}
+      {% if g.grupo == "Sin categoría" %}{% with f=g.filas.0 %}
+      <tr class="subgrupo sin-cat"><td>Sin categoría <a class="chico-link" href="{% url 'banco' %}?mes=todos&categoria=sin">revisar</a></td>{% for v, m in f.celdas %}<td class="num">{% if v %}<a href="{% url 'banco' %}?mes={{ m.clave }}&categoria=sin{% if cuenta %}&cuenta={{ cuenta }}{% endif %}">{{ v|clp }}</a>{% endif %}</td>{% endfor %}<td class="num">{{ f.total|clp }}</td></tr>
+      {% endwith %}{% else %}
+      <tr class="subgrupo"><td>{{ g.grupo }}</td>{% for v in g.subtotal %}<td class="num">{% if v %}{{ v|clp }}{% endif %}</td>{% endfor %}<td class="num">{{ g.total|clp }}</td></tr>
+      {% for f in g.filas %}
+      <tr><td class="sangria">{{ f.nombre }}</td>{% for v, m in f.celdas %}<td class="num">{% if v %}<a href="{% url 'banco' %}?mes={{ m.clave }}&categoria={{ f.pk|default:'sin' }}{% if cuenta %}&cuenta={{ cuenta }}{% endif %}">{{ v|clp }}</a>{% endif %}</td>{% endfor %}<td class="num">{{ f.total|clp }}</td></tr>
+      {% endfor %}{% endif %}
+    {% empty %}
+      <tr><td colspan="{{ n_meses|add:2 }}" class="suave">Sin {{ sec.tipo }} en el período.</td></tr>
+    {% endfor %}
+    <tr class="total"><td>Total {{ sec.tipo }}</td>{% for v in sec.totales %}<td class="num">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num">{{ sec.total|clp }}</td></tr>
+  </tbody>
+  {% endfor %}
+  <tfoot><tr class="neto"><td>Flujo neto</td>{% for v in neto %}<td class="num{% if v < 0 %} peligro{% elif v > 0 %} monto-abono{% endif %}">{% if v %}{{ v|clp }}{% else %}<span class="suave">—</span>{% endif %}</td>{% endfor %}<td class="num{% if neto_total < 0 %} peligro{% else %} monto-abono{% endif %}">{{ neto_total|clp }}</td></tr></tfoot>
+</table>
+</div>
+<p class="ayuda">No incluye los movimientos marcados «sin revisión» (ignorados). Los traspasos entre cuentas propias aparecen como ingreso en una y egreso en otra; para excluirlos, márcalos sin revisión o usa la categoría de traspasos.</p>
+{% endblock %}

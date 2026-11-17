@@ -18,7 +18,7 @@ import unicodedata
 from datetime import date, datetime
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 
 from .models import (COBRO_CLIENTES, PAGO_PROVEEDORES, CategoriaBanco, Compra, Conciliacion,
                      CuentaBancaria, Documento, MovimientoBancario, Pago, PagoCompra,
@@ -360,19 +360,68 @@ def leer_pdf(contenido):
     return datos
 
 
-def aplicar_reglas(sociedad, movimientos):
-    reglas = list(sociedad.reglas_banco.select_related("categoria"))
-    n = 0
+def aplicar_reglas(sociedad, movimientos, reglas=None):
+    """Categoriza los movimientos SIN categoría ni conciliación con la primera regla que coincide
+    (las reglas se revisan por prioridad). Devuelve cuántos categorizó."""
+    if reglas is None:
+        reglas = list(sociedad.reglas_banco.filter(activa=True).select_related("categoria"))
+    usadas, n = {}, 0
     for m in movimientos:
-        if m.categoria_id or m.conciliaciones.exists():
+        if m.categoria_id or m.ignorado or m.conciliaciones.exists():
             continue
         for regla in reglas:
             if regla.aplica(m):
                 m.categoria = regla.categoria
                 m.save(update_fields=["categoria"])
+                usadas[regla.pk] = usadas.get(regla.pk, 0) + 1
                 n += 1
                 break
+    for pk, veces in usadas.items():
+        type(reglas[0]).objects.filter(pk=pk).update(veces=F("veces") + veces)
     return n
+
+
+def coincidencias(regla, sociedad):
+    """Movimientos de la sociedad que cumplen la regla (para la vista previa)."""
+    candidatos = MovimientoBancario.objects.filter(cuenta__sociedad=sociedad).select_related("cuenta", "categoria")
+    if regla.solo == "cargo":
+        candidatos = candidatos.filter(monto__lt=0)
+    elif regla.solo == "abono":
+        candidatos = candidatos.filter(monto__gt=0)
+    if regla.cuenta_id:
+        candidatos = candidatos.filter(cuenta_id=regla.cuenta_id)
+    activa = regla.activa
+    regla.activa = True
+    try:
+        return [m for m in candidatos.order_by("-fecha", "-orden") if regla.aplica(m)]
+    finally:
+        regla.activa = activa
+
+
+def sugerir_reglas(sociedad, minimo=2, limite=8):
+    """Descripciones que se repiten entre los movimientos sin categoría: buenas candidatas a regla."""
+    pendientes = MovimientoBancario.objects.filter(
+        cuenta__sociedad=sociedad, categoria__isnull=True, ignorado=False, conciliaciones__isnull=True)
+    grupos = {}
+    for m in pendientes:
+        texto = texto_regla(m.descripcion)
+        if len(texto) < 4:
+            continue
+        g = grupos.setdefault(texto.lower(), {"texto": texto, "n": 0, "total": 0, "cargos": 0})
+        g["n"] += 1
+        g["total"] += abs(m.monto)
+        g["cargos"] += m.monto < 0
+    sugeridas = [g for g in grupos.values() if g["n"] >= minimo]
+    for g in sugeridas:
+        g["solo"] = "cargo" if g["cargos"] == g["n"] else "abono" if g["cargos"] == 0 else ""
+    return sorted(sugeridas, key=lambda g: (-g["n"], -g["total"]))[:limite]
+
+
+def texto_regla(descripcion):
+    """Parte estable de una descripción (sin números de operación, RUT ni fechas)."""
+    texto = re.sub(r"\b\d[\d./-]*\b", " ", descripcion)       # números, RUT, fechas
+    texto = re.sub(r"\s+", " ", texto).strip(" -:.,")
+    return texto[:60]
 
 
 @transaction.atomic

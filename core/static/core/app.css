@@ -485,3 +485,62 @@ tr.inactivo .persona strong { font-weight: 500; }
   .grupo.abierto .chevron { transform: rotate(90deg); }
 }
 .grupo-boton.activo, .grupo-boton.activo:hover, .grupo.abierto > .grupo-boton.activo { background: #e1eac6; color: #1f3d31; }
+
+/* Banco: categorías, reglas y resumen */
+.grupo-cat { font-size: 15px; margin: 6px 4px 4px; }
+.lista-cat { display: grid; }
+.fila-cat { display: grid; grid-template-columns: minmax(180px, 1fr) 150px minmax(150px, 220px) 70px 110px 80px 54px 112px;
+  gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--borde); margin: 0; }
+.fila-cat.enc { font-size: 12px; color: var(--suave); font-weight: 600; padding-top: 2px; }
+.fila-cat input:not([type=checkbox]), .fila-cat select { width: 100%; min-width: 0; }
+.fila-cat input[type=checkbox] { width: auto; margin: 0; }
+.solo-movil { display: none; }
+.activa-cat { display: flex; align-items: center; gap: 6px; font-weight: 400; }
+.caja-eliminar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; margin: 4px 0 8px;
+  background: var(--rojo-claro); border-radius: 8px; font-size: 13px; }
+.caja-eliminar[hidden] { display: none; }
+.caja-eliminar select { width: auto; }
+@media (max-width: 900px) {
+  .fila-cat.enc { display: none; }
+  .fila-cat { grid-template-columns: 1fr 1fr; }
+  .fila-cat > input[name=nombre] { grid-column: 1 / -1; }
+  .fila-cat .dato[data-rotulo]::before { content: attr(data-rotulo) ": "; color: var(--suave); }
+  .fila-cat .num { text-align: left; }
+  .solo-movil { display: inline; }
+  .fila-cat .acciones-fila { justify-content: flex-start; }
+}
+.acciones-fila { display: flex; gap: 6px; align-items: center; justify-content: flex-end; white-space: nowrap; }
+td.acciones-fila { border-bottom: 1px solid var(--borde); }
+.acciones-fila form { margin: 0; }
+.boton-rojo { background: var(--rojo); border-color: var(--rojo); color: #fff; }
+.boton-rojo:hover { background: #8f1d1d; }
+.barra-reglas { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+.barra-reglas p { margin: 0; flex: 1 1 380px; }
+.barra-reglas .acciones { display: flex; gap: 8px; }
+.barra-reglas form { margin: 0; }
+.sugerencias { border-left: 3px solid var(--verde); }
+.sugerencias code { font-size: 13px; }
+.interruptor { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 2px 0; color: var(--suave); font-size: 13px; }
+.interruptor:hover { background: none; color: var(--texto); }
+.interruptor i { width: 30px; height: 18px; border-radius: 9px; background: #cfd4cb; position: relative; transition: background .15s; }
+.interruptor i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .15s; }
+.interruptor.encendido { color: var(--verde-oscuro); }
+.interruptor.encendido i { background: var(--verde); }
+.interruptor.encendido i::after { left: 14px; }
+.campo.ancho-2 { grid-column: span 2; }
+@media (max-width: 640px) { .campo.ancho-2 { grid-column: 1 / -1; } }
+.opciones-guardar { display: grid; gap: 6px; margin: 18px 0 14px; padding-top: 14px; border-top: 1px solid var(--borde); }
+.opciones-guardar .casilla { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+.opciones-guardar input { width: auto; margin: 0; }
+.tabla-resumen th, .tabla-resumen td { padding: 6px 10px; }
+.tabla-resumen tr.seccion th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--texto); padding-top: 16px; background: none; }
+.tabla-resumen tr.subgrupo td { font-weight: 600; background: #f7f8f5; }
+.tabla-resumen td.sangria { padding-left: 26px; }
+.tabla-resumen tr.total td { font-weight: 700; border-top: 2px solid var(--borde); }
+.tabla-resumen tr.neto td { font-weight: 700; font-size: 15px; border-top: 2px solid var(--texto); border-bottom: 0; }
+.tabla-resumen td a { color: inherit; }
+.tabla-resumen td a:hover { color: var(--verde); }
+.tabla-resumen tr.sin-cat td { color: var(--ambar); background: var(--ambar-claro); }
+.chico-link { font-size: 12px; font-weight: 400; margin-left: 8px; color: var(--ambar); text-decoration: underline; }
+nav.selector-vista { max-width: 100%; overflow-x: auto; }
+nav.selector-vista a { white-space: nowrap; }

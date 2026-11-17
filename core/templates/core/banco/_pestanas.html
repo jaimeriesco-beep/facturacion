@@ -1,0 +1,3 @@
+<p class="miga"><a href="{% url 'banco' %}">← Banco</a></p>
+<div class="titulo"><h1>Categorías y reglas</h1></div>
+<nav class="selector-vista" aria-label="Secciones">{% for p in pestanas %}<a href="{{ p.url }}" {% if p.activa %}class="activo" aria-current="page"{% endif %}>{{ p.titulo }}</a>{% endfor %}</nav>

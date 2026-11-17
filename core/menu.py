@@ -29,7 +29,10 @@ GRUPOS = [
     ("banco", "Banco", "edificio-banco", [
         ("banco", "Movimientos y conciliación", "Cartolas, cobros y pagos", ["banco_movimiento"]),
         ("banco_importar", "Subir cartola", "Banco de Chile y otros", []),
-        ("banco_configuracion", "Categorías y reglas", "Sueldos, impuestos, contribuciones…", []),
+        ("banco_resumen", "Resumen por categoría", "Ingresos y egresos mes a mes", []),
+        ("banco_configuracion", "Categorías", "Sueldos, impuestos, contribuciones…", ["banco_categoria_eliminar"]),
+        ("banco_reglas", "Reglas automáticas", "Categorizar movimientos solos", ["banco_regla_nueva", "banco_regla"]),
+        ("banco_cuentas", "Cuentas bancarias", "Bancos y números de cuenta", []),
     ]),
     ("marketing", "Marketing", "marketing", [
         ("marketing", "Agradecimientos", "Correo automático a clientes", []),

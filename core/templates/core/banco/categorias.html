@@ -1,0 +1,49 @@
+{% extends "core/base.html" %}
+{% load formato static %}
+{% block titulo %}Banco · categorías{% endblock %}
+{% block contenido %}
+{% include "core/banco/_pestanas.html" %}
+<p class="suave" style="margin-top:-6px">Las categorías ordenan los movimientos del banco (sueldos, impuestos, arriendo…). Agrúpalas para ver el flujo de caja por grupo en el <a href="{% url 'banco_resumen' %}">resumen</a>.</p>
+<datalist id="grupos-sugeridos">{% for g in grupos_sugeridos %}<option value="{{ g }}">{% endfor %}</datalist>
+<div class="panel">
+  <h2>Nueva categoría</h2>
+  <form method="post" class="fila-form" style="padding-left:0">{% csrf_token %}
+    <input name="nombre" maxlength="60" required placeholder="Ej.: Mantención de invernaderos" aria-label="Nombre" style="flex:1;min-width:220px;max-width:340px">
+    <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}" {% if v == 'egreso' %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+    <input name="grupo" list="grupos-sugeridos" maxlength="60" placeholder="Grupo (ej.: Gastos operacionales)" aria-label="Grupo" style="min-width:220px">
+    <button type="submit" class="primario">Crear categoría</button>
+  </form>
+</div>
+{% for grupo, cats in grupos %}
+<div class="panel">
+  <h2 class="grupo-cat">{{ grupo }} <span class="suave">· {{ cats|length }}</span></h2>
+  <div class="lista-cat" role="table" aria-label="Categorías de {{ grupo }}">
+    <div class="fila-cat enc" role="row"><span role="columnheader">Nombre</span><span role="columnheader">Tipo</span><span role="columnheader">Grupo</span><span class="num" role="columnheader">Movim.</span><span class="num" role="columnheader">Total {{ anio }}</span><span role="columnheader">Reglas</span><span role="columnheader">Activa</span><span></span></div>
+    {% for c in cats %}
+    <form method="post" class="fila-cat{% if not c.activa %} inactiva{% endif %}" role="row">{% csrf_token %}<input type="hidden" name="pk" value="{{ c.pk }}">
+      <input name="nombre" value="{{ c.nombre }}" maxlength="60" required aria-label="Nombre de la categoría">
+      <select name="tipo" aria-label="Tipo">{% for v, n in tipos %}<option value="{{ v }}" {% if v == c.tipo %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <input name="grupo" value="{{ c.grupo }}" list="grupos-sugeridos" maxlength="60" placeholder="Sin grupo" aria-label="Grupo">
+      <span class="num dato" data-rotulo="Movimientos">{% if c.n %}<a href="{% url 'banco' %}?mes=todos&categoria={{ c.pk }}">{{ c.n }}</a>{% else %}0{% endif %}</span>
+      <span class="num dato" data-rotulo="{{ anio }}">{% if c.total_anio %}{{ c.total_anio|clp }}{% else %}<span class="suave">—</span>{% endif %}</span>
+      <span class="dato">{% if c.n_reglas %}<a href="{% url 'banco_reglas' %}#cat-{{ c.pk }}">{{ c.n_reglas }} regla{{ c.n_reglas|pluralize }}</a>{% else %}<a class="suave" href="{% url 'banco_regla_nueva' %}?categoria={{ c.pk }}">+ regla</a>{% endif %}</span>
+      <label class="dato activa-cat"><input type="checkbox" name="activa" {% if c.activa %}checked{% endif %} aria-label="Activa"><span class="solo-movil">Activa</span></label>
+      <span class="acciones-fila"><button type="submit" class="chico">Guardar</button>
+        <button type="button" class="icono-accion basurero" aria-label="Eliminar {{ c.nombre }}" title="Eliminar o fusionar" onclick="document.getElementById('del-{{ c.pk }}').toggleAttribute('hidden')"><svg class="icono" aria-hidden="true"><use href="{% static 'core/iconos.svg' %}#eliminar"/></svg></button></span>
+    </form>
+    <form method="post" action="{% url 'banco_categoria_eliminar' c.pk %}" class="caja-eliminar" id="del-{{ c.pk }}" hidden>{% csrf_token %}
+      {% if c.n or c.n_reglas %}
+      <span>«{{ c.nombre }}» tiene {{ c.n }} movimiento{{ c.n|pluralize }} y {{ c.n_reglas }} regla{{ c.n_reglas|pluralize }}. Pásalos a:</span>
+      <select name="destino" required aria-label="Pasar a"><option value="">Elegir categoría…</option>{% for o in categorias %}{% if o.pk != c.pk %}<option value="{{ o.pk }}">{{ o.nombre }}</option>{% endif %}{% endfor %}</select>
+      <button type="submit" class="chico boton-rojo">Fusionar y eliminar</button>
+      {% else %}
+      <span>¿Eliminar «{{ c.nombre }}»? No tiene movimientos ni reglas.</span>
+      <button type="submit" class="chico boton-rojo">Eliminar</button>
+      {% endif %}
+      <button type="button" class="chico" onclick="this.form.hidden=true">Cancelar</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

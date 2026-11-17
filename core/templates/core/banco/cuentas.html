@@ -1,0 +1,23 @@
+{% extends "core/base.html" %}
+{% block titulo %}Banco · cuentas{% endblock %}
+{% block contenido %}
+{% include "core/banco/_pestanas.html" %}
+<div class="panel">
+  {% for c in cuentas %}
+  <form method="post" class="fila-form">{% csrf_token %}<input type="hidden" name="accion" value="cuenta"><input type="hidden" name="pk" value="{{ c.pk }}">
+    <span style="min-width:220px">{{ c.banco }} · {{ c.numero }}</span>
+    <input name="alias" value="{{ c.alias }}" maxlength="60" placeholder="Nombre corto, ej.: Cuenta corriente" aria-label="Alias" style="flex:1;max-width:280px">
+    <label class="casilla" style="margin:0"><input type="checkbox" name="activa" {% if c.activa %}checked{% endif %}> Activa</label>
+    <span class="suave">{{ c.n }} movimientos</span>
+    <button type="submit" class="chico">Guardar</button>
+  </form>
+  {% empty %}<p class="suave">Las cuentas se crean solas al subir una cartola que trae su número. También puedes agregarlas aquí.</p>
+  {% endfor %}
+  <form method="post" class="fila-form nueva">{% csrf_token %}<input type="hidden" name="accion" value="cuenta_nueva">
+    <select name="banco" aria-label="Banco">{% for b in bancos %}<option value="{{ b }}">{{ b }}</option>{% endfor %}</select>
+    <input name="numero" required inputmode="numeric" placeholder="N° de cuenta" aria-label="Número de cuenta" style="max-width:200px">
+    <input name="alias" maxlength="60" placeholder="Nombre corto (opcional)" aria-label="Alias" style="max-width:240px">
+    <button type="submit" class="chico">Agregar cuenta</button>
+  </form>
+</div>
+{% endblock %}

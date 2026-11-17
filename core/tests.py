@@ -1555,8 +1555,9 @@ class BancoTests(Base):
         from .models import CategoriaBanco, MovimientoBancario, categorias_banco_de
         categorias_banco_de(self.soc)
         impuestos = CategoriaBanco.objects.get(sociedad=self.soc, nombre__startswith="Impuestos")
-        self.client.post(reverse("banco_configuracion"), {"accion": "regla", "texto": "TESORERIA",
-                                                          "categoria": impuestos.pk, "solo": "cargo"})
+        self.client.post(reverse("banco_regla_nueva"), {"texto": "TESORERIA", "categoria": impuestos.pk,
+                                                        "solo": "cargo", "prioridad": 100, "activa": "on",
+                                                        "accion": "guardar"})
         self.subir()
         m = MovimientoBancario.objects.get(descripcion__contains="TESORERIA")
         self.assertEqual(m.categoria, impuestos)
@@ -1570,6 +1571,116 @@ class BancoTests(Base):
 
     def test_rechaza_pdf(self):
         self.assertContains(self.subir(b"%PDF-1.4 ..."), "No pude abrir el PDF")
+
+
+class CategoriasYReglasTests(Base):
+    subir = BancoTests.subir
+
+    def setUp(self):
+        super().setUp()
+        from .models import categorias_banco_de
+        categorias_banco_de(self.soc)
+        self.subir()
+
+    def cat(self, inicio):
+        return self.soc.categorias_banco.get(nombre__startswith=inicio)
+
+    def test_crea_categoria_de_egreso_con_grupo_y_no_duplica(self):
+        url = reverse("banco_configuracion")
+        self.client.post(url, {"nombre": "Mantención invernaderos", "tipo": "egreso", "grupo": "Gastos operacionales"})
+        c = self.soc.categorias_banco.get(nombre="Mantención invernaderos")
+        self.assertEqual((c.tipo, c.grupo), ("egreso", "Gastos operacionales"))
+        r = self.client.post(url, {"nombre": "mantención INVERNADEROS", "tipo": "egreso"}, follow=True)
+        self.assertContains(r, "Ya existe")
+        r = self.client.get(url)
+        self.assertContains(r, "Mantención invernaderos")
+        self.assertContains(r, "Gastos operacionales")
+
+    def test_eliminar_categoria_usada_exige_destino_y_fusiona(self):
+        from .models import MovimientoBancario, ReglaBanco
+        origen, destino = self.cat("Comisiones"), self.cat("Otros egresos")
+        m = MovimientoBancario.objects.get(descripcion__contains="COMISION")
+        m.categoria = origen
+        m.save()
+        regla = ReglaBanco.objects.create(sociedad=self.soc, texto="COMISION", categoria=origen)
+        url = reverse("banco_categoria_eliminar", args=[origen.pk])
+        r = self.client.post(url, follow=True)
+        self.assertContains(r, "elige a qué categoría")
+        self.assertTrue(self.soc.categorias_banco.filter(pk=origen.pk).exists())
+        self.client.post(url, {"destino": destino.pk})
+        self.assertFalse(self.soc.categorias_banco.filter(pk=origen.pk).exists())
+        m.refresh_from_db(); regla.refresh_from_db()
+        self.assertEqual((m.categoria, regla.categoria), (destino, destino))
+
+    def test_regla_con_varias_palabras_monto_y_prioridad(self):
+        from .banco import aplicar_reglas
+        from .models import MovimientoBancario, ReglaBanco
+        imp, otros = self.cat("Impuestos"), self.cat("Otros egresos")
+        ReglaBanco.objects.create(sociedad=self.soc, texto="tgr, tesorería", categoria=imp, prioridad=10,
+                                  monto_min=50000)
+        ReglaBanco.objects.create(sociedad=self.soc, texto="TESORERIA", categoria=otros, prioridad=50)
+        ReglaBanco.objects.create(sociedad=self.soc, texto="COMISION", categoria=imp, monto_min=10000)
+        pendientes = list(MovimientoBancario.objects.filter(categoria__isnull=True))
+        aplicar_reglas(self.soc, pendientes)
+        tes = MovimientoBancario.objects.get(descripcion__contains="TESORERIA")
+        com = MovimientoBancario.objects.get(descripcion__contains="COMISION")
+        self.assertEqual(tes.categoria, imp)            # sin tilde, gana la de menor prioridad
+        self.assertIsNone(com.categoria)                # 5.000 < monto mínimo
+        self.assertEqual(ReglaBanco.objects.get(prioridad=10).veces, 1)
+
+    def test_probar_no_guarda_y_guardar_aplica(self):
+        from .models import MovimientoBancario, ReglaBanco
+        imp = self.cat("Impuestos")
+        datos = {"texto": "TESORERIA", "categoria": imp.pk, "solo": "cargo", "prioridad": 100, "activa": "on"}
+        r = self.client.post(reverse("banco_regla_nueva"), {**datos, "accion": "probar"})
+        self.assertEqual(r.context["resumen_vista"]["total"], 1)
+        self.assertFalse(ReglaBanco.objects.exists())
+        self.client.post(reverse("banco_regla_nueva"), {**datos, "accion": "guardar", "aplicar": "on"})
+        self.assertEqual(MovimientoBancario.objects.get(descripcion__contains="TESORERIA").categoria, imp)
+        r = self.client.post(reverse("banco_regla_nueva"), {**datos, "texto": "ab", "accion": "guardar"})
+        self.assertContains(r, "al menos 3 letras")
+
+    def test_pausar_editar_y_borrar_regla(self):
+        from .models import ReglaBanco
+        regla = ReglaBanco.objects.create(sociedad=self.soc, texto="TESORERIA", categoria=self.cat("Impuestos"))
+        self.client.post(reverse("banco_reglas"), {"accion": "activar", "pk": regla.pk})
+        regla.refresh_from_db()
+        self.assertFalse(regla.activa)
+        r = self.client.get(reverse("banco_regla", args=[regla.pk]))
+        self.assertEqual(r.context["resumen_vista"]["total"], 1)
+        self.client.post(reverse("banco_regla", args=[regla.pk]), {
+            "texto": "TESORERIA, TGR", "categoria": regla.categoria_id, "prioridad": 5, "accion": "guardar"})
+        regla.refresh_from_db()
+        self.assertEqual((regla.texto, regla.prioridad), ("TESORERIA, TGR", 5))
+        self.client.post(reverse("banco_reglas"), {"accion": "borrar", "pk": regla.pk})
+        self.assertFalse(ReglaBanco.objects.exists())
+
+    def test_sugerencias_de_movimientos_repetidos(self):
+        from .banco import sugerir_reglas
+        from .models import CuentaBancaria, MovimientoBancario
+        cuenta = CuentaBancaria.objects.get()
+        for i, dia in enumerate((3, 10, 17)):
+            MovimientoBancario.objects.create(cuenta=cuenta, fecha=date(2026, 11, dia), orden=100 + i, monto=-30000,
+                                              descripcion=f"PAGO ARRIENDO BODEGA 00{i}", huella=f"x{i}")
+        s = sugerir_reglas(self.soc)
+        self.assertEqual((s[0]["texto"], s[0]["n"], s[0]["solo"]), ("PAGO ARRIENDO BODEGA", 3, "cargo"))
+        self.assertContains(self.client.get(reverse("banco_reglas")), "PAGO ARRIENDO BODEGA")
+
+    def test_resumen_por_categoria_y_excel(self):
+        from .models import MovimientoBancario
+        imp = self.cat("Impuestos")
+        MovimientoBancario.objects.filter(descripcion__contains="TESORERIA").update(categoria=imp)
+        r = self.client.get(reverse("banco_resumen"), {"meses": 3})
+        egresos = r.context["secciones"][1]
+        nombres = [f["nombre"] for g in egresos["grupos"] for f in g["filas"]]
+        self.assertIn(imp.nombre, nombres)
+        self.assertEqual(egresos["total"], 144500)
+        self.assertEqual(sum(r.context["neto"]), 119000 - 144500)
+        r = self.client.get(reverse("banco_resumen"), {"formato": "excel"})
+        self.assertEqual(r["Content-Type"].split(";")[0],
+                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        r = self.client.get(reverse("banco"), {"mes": "todos", "categoria": "sin"})
+        self.assertEqual(len(r.context["movimientos"]), 3)
 
 
 class CartolaSantanderTests(Base):
@@ -1606,8 +1717,8 @@ class CartolaSantanderTests(Base):
 
     def test_crear_cuenta_a_mano(self):
         from .models import CuentaBancaria
-        self.client.post(reverse("banco_configuracion"), {"accion": "cuenta_nueva", "banco": "Banco Santander",
-                                                          "numero": "0-000-7123456-7", "alias": "Santander CC"})
+        self.client.post(reverse("banco_cuentas"), {"accion": "cuenta_nueva", "banco": "Banco Santander",
+                                                    "numero": "0-000-7123456-7", "alias": "Santander CC"})
         c = CuentaBancaria.objects.get()
         self.assertEqual((c.banco, c.numero, str(c)), ("Banco Santander", "71234567", "Santander CC"))
 

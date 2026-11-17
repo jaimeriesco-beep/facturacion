@@ -1,0 +1,41 @@
+{% extends "core/base.html" %}
+{% load formato %}
+{% block titulo %}Banco · {% if regla %}editar regla{% else %}nueva regla{% endif %}{% endblock %}
+{% block contenido %}
+<p class="miga"><a href="{% url 'banco_reglas' %}">← Reglas automáticas</a></p>
+<div class="titulo"><h1>{% if regla %}Editar regla{% else %}Nueva regla{% endif %}</h1></div>
+<form method="post" class="panel">{% csrf_token %}
+  {{ form.non_field_errors }}
+  <div class="campos">
+    <div class="campo ancho-2">{{ form.texto.label_tag }}{{ form.texto }}<div class="ayuda">Si la descripción del movimiento contiene alguna de estas palabras (sepáralas con coma). No distingue mayúsculas ni tildes.</div>{{ form.texto.errors }}</div>
+    <div class="campo">{{ form.categoria.label_tag }}{{ form.categoria }}{{ form.categoria.errors }}</div>
+    <div class="campo">{{ form.solo.label_tag }}{{ form.solo }}</div>
+    <div class="campo">{{ form.monto_min.label_tag }}{{ form.monto_min }}<div class="ayuda">{{ form.monto_min.help_text }}</div>{{ form.monto_min.errors }}</div>
+    <div class="campo">{{ form.monto_max.label_tag }}{{ form.monto_max }}<div class="ayuda">{{ form.monto_max.help_text }}</div>{{ form.monto_max.errors }}</div>
+    <div class="campo">{{ form.cuenta.label_tag }}{{ form.cuenta }}</div>
+    <div class="campo">{{ form.prioridad.label_tag }}{{ form.prioridad }}<div class="ayuda">Menor número = se revisa antes. Útil cuando dos reglas podrían coincidir.</div></div>
+    <div class="campo ancho-2">{{ form.nota.label_tag }}{{ form.nota }}</div>
+    <div class="campo casilla">{{ form.activa }}{{ form.activa.label_tag }}</div>
+  </div>
+  <div class="opciones-guardar">
+    <label class="casilla"><input type="checkbox" name="aplicar" checked> Aplicar ahora a los movimientos sin categoría que coincidan</label>
+    <label class="casilla"><input type="checkbox" name="recategorizar"> Cambiar también los que ya tienen otra categoría (no toca los conciliados)</label>
+  </div>
+  <div class="acciones">
+    <button type="submit" name="accion" value="probar" class="boton">Probar regla</button>
+    <button type="submit" name="accion" value="guardar" class="primario">Guardar regla</button>
+  </div>
+</form>
+{% if vista is not None %}
+<div class="panel tabla-panel">
+  <h2>Vista previa</h2>
+  {% if resumen_vista.total %}
+  <p>Coincide con <strong>{{ resumen_vista.total }} movimiento{{ resumen_vista.total|pluralize }}</strong> por {{ resumen_vista.suma|clp }}: {{ resumen_vista.sin }} sin categoría{% if resumen_vista.otra %} y {{ resumen_vista.otra }} con otra categoría{% endif %}.{% if resumen_vista.total > 30 %} Se muestran los 30 más recientes.{% endif %}</p>
+  <table>
+    <thead><tr><th>Fecha</th><th>Descripción</th><th>Cuenta</th><th class="num">Monto</th><th>Categoría actual</th></tr></thead>
+    <tbody>{% for m in vista %}<tr><td>{{ m.fecha|date:"d/m/Y" }}</td><td>{{ m.descripcion }}</td><td class="suave">{{ m.cuenta }}</td><td class="num{% if m.monto > 0 %} monto-abono{% endif %}">{{ m.monto|clp }}</td><td>{% if m.categoria %}<span class="etiqueta">{{ m.categoria }}</span>{% else %}<span class="suave">Sin categoría</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="vacio">Ningún movimiento cargado coincide. La regla igual se aplicará a las cartolas que subas después.</p>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

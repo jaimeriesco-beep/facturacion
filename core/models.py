@@ -1193,6 +1193,7 @@ class MovimientoBancario(models.Model):
     huella = models.CharField(max_length=64, editable=False)
     # Viene de «últimos movimientos» (información provisoria del banco); la cartola definitiva lo confirma.
     provisorio = models.BooleanField(default=False, editable=False)
+    formato = models.CharField(max_length=20, blank=True, editable=False)  # de qué tipo de archivo vino
     categoria = models.ForeignKey(CategoriaBanco, null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name="movimientos")
     ignorado = models.BooleanField(default=False)

@@ -2094,6 +2094,91 @@ class UltimosMovimientosSantanderTests(Base):
         self.assertEqual(MovimientoBancario.objects.count(), 3)
 
 
+def pdf_banco_chile(filas, cuenta="00-001-23456-7890", por_pagina=3):
+    """PDF con la estructura de «Movimientos» del Banco de Chile (datos inventados).
+    filas: (fecha, descripción con | para 2ª línea, canal, cargo, abono, saldo), del más reciente al más antiguo.
+    Simula el corte de página: los montos de la primera fila de cada página quedan al pie de la anterior."""
+    import io
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    salida = io.BytesIO()
+    c = canvas.Canvas(salida, pagesize=letter)
+    alto = letter[1]
+    t = lambda x, y, s: c.drawString(x, alto - y, s)  # noqa: E731
+    d = lambda x1, y, s: c.drawRightString(x1, alto - y, s)  # noqa: E731
+    pie = lambda y: (t(154, y, "Infórmese sobre la garantía estatal de los depósitos en su banco o en www.sbif.cl."),  # noqa: E731
+                     t(154, y + 10, "© 2015 Banco de Chile. Todos los Derechos Reservados"))
+    c.setFont("Helvetica", 8)
+    t(50, 60, "Sr(a).: Persona Inventada")
+    t(50, 75, "Nombre Empresa: VERDE VERTICAL SpA")
+    t(50, 90, "Rut: 77.552.628-9")
+    t(50, 105, f"Cuenta N°: {cuenta}")
+    cargos = sum(f[3] for f in filas)
+    abonos = sum(f[4] for f in filas)
+    t(86, 268, "Total Cargos")
+    t(213, 268, "Total Abonos")
+    t(94, 281, f"{cargos:,}".replace(",", "."))
+    t(222, 281, f"{abonos:,}".replace(",", "."))
+    t(50, 337, "Movimientos al 17/11/2026")
+    for x, s in ((237, "Canal o"), (56, "Fecha"), (102, "Descripción"), (301, "Nro. Docto."),
+                 (355, "Cargos (CLP)"), (423, "Abonos (CLP)"), (491, "Saldo (CLP)")):
+        t(x, 359 if x != 237 else 354, s)
+    t(237, 363, "Sucursal")
+    y = 380
+    pendientes = None
+    for i, (fecha, desc, canal, cargo, abono, saldo) in enumerate(filas):
+        corte = i and i % por_pagina == 0
+        montos = lambda yy: (d(414, yy, f"{cargo:,}".replace(",", ".")) if cargo else d(482, yy, f"{abono:,}".replace(",", ".")),  # noqa: E731
+                             d(559, yy, f"{saldo:,}".replace(",", ".")))
+        if corte:
+            montos(y)                       # al pie de la página, sin fecha ni descripción
+            pie(737)
+            c.showPage(); c.setFont("Helvetica", 8)
+            y = 85
+        partes = desc.split("|")
+        t(53, y, fecha); t(99, y, partes[0]); t(234, y, canal)
+        if not corte:
+            montos(y)
+        if len(partes) > 1:
+            y += 9; t(99, y, partes[1])
+        y += 19
+    pie(737)
+    c.save()
+    return salida.getvalue()
+
+
+class CartolaPDFBancoChileTests(Base):
+    FILAS = [("05/11/2026", "Comision Mantencion", "Oficina Central", 5000, 0, 474500),
+             ("05/11/2026", "Pago: Tesoreria Gral|Republica", "Internet", 80000, 0, 479500),
+             ("03/11/2026", "App-traspaso A: Semillas|del Sur", "Internet", 59500, 0, 559500),
+             ("01/11/2026", "Traspaso De: Cliente Uno Spa", "Internet", 0, 119000, 619000)]
+
+    def subir(self, contenido, nombre):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("banco_importar"), {"archivos": [SimpleUploadedFile(nombre, contenido)]})
+
+    def test_lee_corte_de_pagina_descripciones_largas_y_totales(self):
+        from .banco import leer
+        d = leer(pdf_banco_chile(self.FILAS), "cartola.pdf")
+        self.assertEqual((d["banco"], d["cuenta"], d["rut"], d["totales_ok"]),
+                         ("Banco de Chile", "1234567890", "77552628-9", True))
+        self.assertEqual([(m["fecha"].day, m["monto"], m["saldo"]) for m in d["movimientos"]],
+                         [(1, 119000, 619000), (3, -59500, 559500), (5, -80000, 479500), (5, -5000, 474500)])
+        self.assertEqual(d["movimientos"][1]["descripcion"], "App-traspaso A: Semillas del Sur")
+        self.assertEqual(d["movimientos"][3]["sucursal"], "Oficina Central")
+
+    def test_no_duplica_si_el_mismo_mes_se_sube_en_txt_y_en_pdf(self):
+        from .models import MovimientoBancario
+        self.assertContains(self.subir(CARTOLA, "CartolaEmitida.txt"), "4 movimientos nuevos")
+        r = self.subir(pdf_banco_chile(self.FILAS), "cartola_noviembre.pdf")
+        self.assertContains(r, "4 ya estaban")
+        self.assertContains(r, "saldos de la cartola cuadran")
+        self.assertEqual(MovimientoBancario.objects.count(), 4)
+        mas = [("06/11/2026", "Traspaso De: Cliente Dos", "Internet", 0, 20000, 494500)] + self.FILAS
+        self.assertContains(self.subir(pdf_banco_chile(mas), "cartola.pdf"), "1 movimiento nuevo")
+        self.assertEqual(MovimientoBancario.objects.count(), 5)
+
+
 class CartolaPDFTests(Base):
     def subir(self, contenido):
         from django.core.files.uploadedfile import SimpleUploadedFile

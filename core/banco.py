@@ -235,6 +235,7 @@ def leer(contenido, nombre=""):
     if not datos["movimientos"]:
         raise ErrorCartola("La cartola no tiene movimientos.")
     movs = datos["movimientos"]
+    datos["formato"] = re.sub(r"[^a-z]", "", (datos["banco"] or "otro").lower())[:12] + "-tabla"
     if movs[0]["fecha"] > movs[-1]["fecha"]:
         # Cartola del más reciente al más antiguo (habitual en Santander): se invierte el orden
         # dentro de cada día para que el saldo se lea en secuencia.
@@ -268,13 +269,15 @@ def leer_pdf(contenido):
         raise ErrorCartola("El PDF no tiene texto (parece escaneado). Descarga la cartola en Excel o en el PDF del banco.")
     if re.search(r"Consulta de movimientos", texto, re.I):
         return _leer_pdf_ultimos(pdf, texto)
+    if re.search(r"Banco de Chile", texto, re.I) and re.search(r"Movimientos al", texto, re.I):
+        return _leer_pdf_banco_chile(pdf, texto)
     buscar = lambda patron: (re.search(patron, texto, re.I | re.M) or [None, ""])[1]  # noqa: E731
     inicial, final = buscar(r"Saldo inicial:\s*\$\s*([\d.]+)"), buscar(r"Saldo final:\s*\$\s*([\d.]+)")
     if not inicial or "FECHA" not in texto.upper():
         raise ErrorCartola("Este PDF no tiene el formato de cartola que la app reconoce (Santander). "
                            "Descarga la cartola en Excel o TXT, o mándame un ejemplo para agregar el formato.")
     datos = {"titular": (buscar(r"Empresa:\s*(.+?)\s*(?:RUT empresa|$)") or "").strip(),
-             "rut": "", "cuenta": "", "banco": "Banco Santander", "movimientos": [],
+             "rut": "", "cuenta": "", "banco": "Banco Santander", "movimientos": [], "formato": "santander-pdf",
              "saldo_inicial": _monto(inicial), "saldo_final": _monto(final) if final else None}
     if r := re.search(r"RUT empresa:\s*([\d.]+)-([\dkK])", texto, re.I):
         datos["rut"] = f"{int(r.group(1).replace('.', ''))}-{r.group(2).upper()}"
@@ -371,7 +374,8 @@ def _leer_pdf_ultimos(pdf, texto):
     """
     buscar = lambda patron: (re.search(patron, texto, re.I | re.M) or [None, ""])[1]  # noqa: E731
     datos = {"titular": (buscar(r"Empresa:\s*(.+?)\s*(?:RUT empresa|$)") or "").strip(),
-             "rut": "", "cuenta": "", "banco": "Banco Santander", "movimientos": [], "provisorio": True}
+             "rut": "", "cuenta": "", "banco": "Banco Santander", "movimientos": [], "provisorio": True,
+             "formato": "santander-ultimos"}
     if r := re.search(r"RUT empresa:\s*([\d.]+)-([\dkK])", texto, re.I):
         datos["rut"] = f"{int(r.group(1).replace('.', ''))}-{r.group(2).upper()}"
     if c := re.search(r"Corriente\s*N°?\s*:?\s*([\d-]{6,})", texto.replace("C uenta", "Cuenta"), re.I):
@@ -441,6 +445,118 @@ def _leer_pdf_ultimos(pdf, texto):
         vistos[clave] = vistos.get(clave, 0) + 1
         m["huella"] = hashlib.sha256(repr(clave + (vistos[clave],)).encode()).hexdigest()
         datos["movimientos"].append(m)
+    return datos
+
+
+def _leer_pdf_banco_chile(pdf, texto):
+    """«Movimientos» en PDF del Banco de Chile (Empresas / Personas).
+
+    Columnas: Fecha, Descripción (puede seguir en la línea de abajo), Canal o Sucursal,
+    N° Docto., Cargos, Abonos y Saldo (posterior al movimiento). Viene del más reciente al
+    más antiguo. Al cortar página, los montos de una fila pueden quedar al pie de la página
+    y su fecha y descripción al inicio de la siguiente.
+    """
+    buscar = lambda patron: (re.search(patron, texto, re.I | re.M) or [None, ""])[1]  # noqa: E731
+    datos = {"titular": (buscar(r"Nombre Empresa:\s*(.+)$") or buscar(r"Sr\(a\)\.?:\s*(.+)$")).strip(),
+             "rut": "", "cuenta": "", "banco": "Banco de Chile", "movimientos": [], "formato": "bancochile-pdf"}
+    if r := re.search(r"^Rut:\s*([\d.]+)-([\dkK])", texto, re.I | re.M):
+        datos["rut"] = f"{int(r.group(1).replace('.', ''))}-{r.group(2).upper()}"
+    if c := buscar(r"Cuenta N°?\s*:?\s*([\d-]{6,})"):
+        datos["cuenta"] = c.replace("-", "").lstrip("0")
+    totales = {}
+    if t := re.search(r"Total Cargos\s+Total Abonos.*\n\s*([\d.]+)\s+([\d.]+)", texto, re.I):
+        totales = {"cargos": _monto(t.group(1)), "abonos": _monto(t.group(2))}
+
+    x = None
+    filas, sueltos = [], []          # sueltos: montos al pie de página sin su fila
+    for pagina in pdf.pages:
+        palabras = pagina.extract_words()
+        enc = next((w for w in palabras if w["text"] == "Descripción"), None)
+        if enc is not None:
+            fila_enc = [w for w in palabras if abs(w["top"] - enc["top"]) < 8]
+            col = {w["text"]: w for w in fila_enc}
+            if {"Cargos", "Abonos", "Saldo"} <= set(col):
+                x = {"desc": enc["x0"], "canal": col.get("Canal", col.get("Sucursal", enc))["x0"],
+                     "doc": col.get("Nro.", col["Cargos"])["x0"], "cargos": col["Cargos"]["x0"],
+                     "abonos": col["Abonos"]["x0"], "saldo": col["Saldo"]["x0"]}
+                inicio = enc["top"] + 8
+            else:
+                inicio = 0
+        else:
+            inicio = 0
+        if x is None:
+            continue
+        fin = min([w["top"] for w in palabras if w["text"] in ("Infórmese", "©")] + [pagina.height])
+        cuerpo = sorted((w for w in palabras if inicio < w["top"] < fin - 1), key=lambda w: (w["top"], w["x0"]))
+        lineas = []
+        for w in cuerpo:
+            if lineas and abs(lineas[-1][0] - w["top"]) < 3:
+                lineas[-1][1].append(w)
+            else:
+                lineas.append([w["top"], [w]])
+        propias = []
+        for top, ws in lineas:
+            fecha = next((w for w in ws if _RE_FECHA.match(w["text"]) and w["x0"] < x["desc"] - 2), None)
+            montos = [w for w in ws if w["x0"] >= x["doc"] + 30 and _RE_MONTO.match(w["text"])]
+            if fecha:
+                propias.append({"fecha": _fecha(fecha["text"]), "desc": [], "canal": [], "doc": [],
+                                "cargo": 0, "abono": 0, "saldo": None, "con_montos": bool(montos)})
+                actual = propias[-1]
+            elif montos and not any(w for w in ws if w not in montos):
+                sueltos.append(montos)          # montos que quedaron al pie, sin fecha
+                continue
+            elif not propias:
+                continue
+            else:
+                actual = propias[-1]            # continuación de la descripción
+            for w in ws:
+                if w is fecha:
+                    continue
+                x0, x1, t = w["x0"], w["x1"], w["text"]
+                if w in montos:
+                    if x1 <= x["abonos"]:
+                        actual["cargo"] = _monto(t)
+                    elif x1 <= x["saldo"]:
+                        actual["abono"] = _monto(t)
+                    else:
+                        actual["saldo"] = _monto(t)
+                elif x0 < x["canal"] - 3:
+                    actual["desc"].append(t)
+                elif x0 < x["doc"] - 3:
+                    actual["canal"].append(t)
+                elif x0 < x["cargos"] - 3:
+                    actual["doc"].append(t)
+        # Montos que quedaron al pie de la página anterior: son de la primera fila sin montos.
+        while sueltos:
+            pendiente = next((f for f in propias if not f["con_montos"]), None)
+            if pendiente is None:
+                break
+            for w in sueltos.pop(0):
+                if w["x1"] <= x["abonos"]:
+                    pendiente["cargo"] = _monto(w["text"])
+                elif w["x1"] <= x["saldo"]:
+                    pendiente["abono"] = _monto(w["text"])
+                else:
+                    pendiente["saldo"] = _monto(w["text"])
+            pendiente["con_montos"] = True
+        filas.extend(propias)
+    filas = [f for f in filas if f["abono"] or f["cargo"]]
+    if not filas:
+        raise ErrorCartola("La cartola no tiene movimientos.")
+    filas.reverse()                               # del más antiguo al más reciente
+    vistos = {}
+    for orden, f in enumerate(filas, start=1):
+        m = {"fecha": f["fecha"], "monto": f["abono"] - f["cargo"], "saldo": f["saldo"], "orden": orden,
+             "descripcion": " ".join(f["desc"])[:200] or "(sin descripción)",
+             "documento": " ".join(f["doc"]).lstrip("0")[:30], "sucursal": " ".join(f["canal"])[:40]}
+        clave = (m["fecha"], m["descripcion"].lower(), m["monto"], m["documento"])
+        vistos[clave] = vistos.get(clave, 0) + 1
+        m["huella"] = hashlib.sha256(repr(clave + (vistos[clave],)).encode()).hexdigest()
+        datos["movimientos"].append(m)
+    movs = datos["movimientos"]
+    if totales:
+        datos["totales_ok"] = (sum(-m["monto"] for m in movs if m["monto"] < 0) == totales["cargos"]
+                               and sum(m["monto"] for m in movs if m["monto"] > 0) == totales["abonos"])
     return datos
 
 
@@ -522,29 +638,31 @@ def importar(sociedad, contenido, nombre="", cuenta=None, aceptar_otro_rut=False
     categorias_banco_de(sociedad)
     existentes = set(cuenta.movimientos.values_list("huella", flat=True))
     provisorio = bool(datos.get("provisorio"))
+    formato = datos.get("formato", "")
     candidatos = [m for m in datos["movimientos"] if m["huella"] not in existentes]
-    # La consulta de «últimos movimientos» y la cartola definitiva describen distinto el mismo
-    # movimiento: se reconocen por fecha y monto para no duplicarlos.
-    desde = min((m["fecha"] for m in candidatos), default=None)
+    # Distintos formatos (Excel, PDF, últimos movimientos) describen distinto el mismo movimiento:
+    # entre formatos se reconocen por fecha y monto, uno a uno, para no duplicarlos.
+    fechas = {m["fecha"] for m in candidatos}
     previos = {}
-    if desde:
-        for e in cuenta.movimientos.filter(fecha__gte=desde).exclude(huella__in=[m["huella"] for m in candidatos]):
-            if provisorio or e.provisorio:
+    if fechas:
+        for e in (cuenta.movimientos.filter(fecha__in=fechas)
+                  .exclude(huella__in=[m["huella"] for m in datos["movimientos"]]).order_by("orden", "id")):
+            if provisorio or e.provisorio or e.formato != formato:
                 previos.setdefault((e.fecha, e.monto), []).append(e)
     nuevos, confirmados = [], 0
     for m in candidatos:
         pares = previos.get((m["fecha"], m["monto"]))
         if pares:
             previo = pares.pop(0)
-            if not provisorio:          # la cartola definitiva reemplaza los datos provisorios
+            if previo.provisorio and not provisorio:   # la cartola definitiva reemplaza los datos provisorios
                 for campo in ("descripcion", "saldo", "orden", "documento", "sucursal", "huella"):
                     setattr(previo, campo, m[campo])
-                previo.provisorio = False
+                previo.provisorio, previo.formato = False, formato
                 previo.save(update_fields=["descripcion", "saldo", "orden", "documento", "sucursal", "huella",
-                                           "provisorio"])
+                                           "provisorio", "formato"])
                 confirmados += 1
-            continue
-        nuevos.append(MovimientoBancario(cuenta=cuenta, provisorio=provisorio, **m))
+            continue                                   # ya estaba (cargado desde otro formato)
+        nuevos.append(MovimientoBancario(cuenta=cuenta, provisorio=provisorio, formato=formato, **m))
     MovimientoBancario.objects.bulk_create(nuevos)
     creados = list(cuenta.movimientos.filter(huella__in=[m.huella for m in nuevos]))
     reglas = aplicar_reglas(sociedad, creados)
@@ -557,6 +675,8 @@ def importar(sociedad, contenido, nombre="", cuenta=None, aceptar_otro_rut=False
         if saldo is not None and saldo + m["monto"] != m["saldo"]:
             descuadres += 1
         saldo = m["saldo"]
+    if datos.get("totales_ok") is False:
+        descuadres += 1            # la suma de cargos o abonos no coincide con el total del banco
     if datos.get("saldo_final") is not None and datos["movimientos"]:
         if datos["movimientos"][-1]["saldo"] != datos["saldo_final"]:
             descuadres += 1        # el PDF no llega al saldo final que informa el banco

@@ -171,3 +171,57 @@ document.addEventListener("focusout", (e) => {
   // En el celular, el grupo de la página actual parte abierto.
   if (!escritorio()) grupos.filter((g) => g.classList.contains("actual")).forEach(abrir);
 })();
+
+// Subir varios archivos: zona para arrastrar, se pueden agregar archivos en varias tandas
+// (incluso de carpetas distintas) y quitar los que sobran antes de subir.
+(function () {
+  document.querySelectorAll('input[type="file"][multiple]').forEach((input) => {
+    if (typeof DataTransfer === "undefined") return;
+    const elegidos = new DataTransfer();
+    const zona = document.createElement("div");
+    zona.className = "zona-archivos";
+    zona.innerHTML = '<p><strong>Arrastra aquí los archivos</strong> o <button type="button" class="chico">Elegir archivos</button></p>' +
+      '<p class="ayuda">Puedes agregar varios, en una o en varias tandas.</p><ul class="lista-archivos"></ul>';
+    input.classList.add("input-oculto");
+    input.required = false;
+    input.after(zona);
+    const lista = zona.querySelector(".lista-archivos");
+    const tamano = (b) => b > 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+    const pintar = () => {
+      input.files = elegidos.files;
+      lista.innerHTML = "";
+      Array.from(elegidos.files).forEach((f, i) => {
+        const li = document.createElement("li");
+        li.innerHTML = '<span class="nombre"></span><span class="suave"></span><button type="button" class="icono-accion" aria-label="Quitar">✕</button>';
+        li.querySelector(".nombre").textContent = f.name;
+        li.querySelector(".suave").textContent = tamano(f.size);
+        li.querySelector("button").addEventListener("click", () => { elegidos.items.remove(i); pintar(); });
+        lista.appendChild(li);
+      });
+      zona.classList.toggle("con-archivos", elegidos.files.length > 0);
+      const boton = input.form && input.form.querySelector('button[type="submit"].primario');
+      if (boton) {
+        boton.dataset.texto = boton.dataset.texto || boton.textContent;
+        const n = elegidos.files.length;
+        boton.textContent = n > 1 ? `${boton.dataset.texto} (${n} archivos)` : boton.dataset.texto;
+      }
+    };
+    const agregar = (archivos) => {
+      const ya = new Set(Array.from(elegidos.files).map((f) => f.name + f.size));
+      Array.from(archivos).forEach((f) => { if (!ya.has(f.name + f.size)) elegidos.items.add(f); });
+      pintar();
+    };
+    zona.querySelector("button").addEventListener("click", () => {
+      const tanda = document.createElement("input");
+      tanda.type = "file"; tanda.multiple = true; tanda.accept = input.accept;
+      tanda.addEventListener("change", () => agregar(tanda.files));
+      tanda.click();
+    });
+    ["dragenter", "dragover"].forEach((ev) => zona.addEventListener(ev, (e) => { e.preventDefault(); zona.classList.add("encima"); }));
+    ["dragleave", "drop"].forEach((ev) => zona.addEventListener(ev, () => zona.classList.remove("encima")));
+    zona.addEventListener("drop", (e) => { e.preventDefault(); agregar(e.dataTransfer.files); });
+    if (input.form) input.form.addEventListener("submit", (e) => {
+      if (!elegidos.files.length) { e.preventDefault(); zona.classList.add("falta"); }
+    });
+  });
+})();

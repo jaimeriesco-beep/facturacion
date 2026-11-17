@@ -567,3 +567,12 @@ nav.selector-vista a { white-space: nowrap; }
 tr:target td { background: var(--verde-claro); transition: background 1.5s; }
 .ayuda-inline { font-size: 11.5px; font-weight: 400; color: var(--suave); text-transform: none; letter-spacing: 0; margin-left: 6px; }
 .sel-flujo.f-inversion { background: #eef3fb; } .sel-flujo.f-financiamiento { background: #f6f0fb; } .sel-flujo.f-interno { background: #f1f2ef; }
+/* Zona para subir varios archivos */
+.input-oculto { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.zona-archivos { border: 2px dashed var(--borde); border-radius: 10px; padding: 16px; text-align: center; background: #fafbf8; transition: background .15s, border-color .15s; }
+.zona-archivos p { margin: 0 0 4px; }
+.zona-archivos.encima { border-color: var(--verde); background: var(--verde-claro); }
+.zona-archivos.falta { border-color: var(--rojo); }
+.lista-archivos { list-style: none; padding: 0; margin: 10px 0 0; text-align: left; display: grid; gap: 4px; }
+.lista-archivos li { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--borde); border-radius: 6px; padding: 4px 4px 4px 10px; font-size: 13px; }
+.lista-archivos .nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

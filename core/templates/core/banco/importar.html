@@ -20,14 +20,15 @@
     <h2>Archivos</h2>
     {{ form.non_field_errors }}
     <div class="campo"><label for="id_archivos">{{ form.archivos.label }}</label>{{ form.archivos }}{{ form.archivos.errors }}<p class="ayuda">Puedes subir varios meses a la vez. Si un movimiento ya estaba, no se duplica.</p></div>
-    <div class="campo"><label for="id_cuenta">{{ form.cuenta.label }}</label>{{ form.cuenta }}<p class="ayuda">La cartola del Banco de Chile trae el número de cuenta y la app crea la cuenta sola.</p></div>
+    <div class="campo"><label for="id_cuenta">{{ form.cuenta.label }}</label>{{ form.cuenta }}<p class="ayuda">Si la cartola trae el número de cuenta (Banco de Chile y la mayoría de las de Santander), la app crea la cuenta sola. Si no, elige la cuenta o créala primero subiendo una cartola que sí lo traiga.</p></div>
     <label class="casilla">{{ form.otro_rut }} {{ form.otro_rut.label }}</label>
     <div class="acciones" style="margin-top:14px"><button class="primario" type="submit">Subir</button></div>
   </form>
   <div class="panel pasos-sii">
     <h2>Cómo descargar la cartola</h2>
     <p><strong>Banco de Chile</strong> (empresas): <em>Cuentas</em> → <em>Saldos y movimientos</em> o <em>Cartolas</em> → elige el período → descarga en formato <strong>Excel</strong> (o TXT). No uses el PDF.</p>
-    <p><strong>Otros bancos</strong>: descarga los movimientos en Excel (.xlsx) o CSV. La app busca las columnas de fecha, descripción, cargo, abono y saldo.</p>
+    <p><strong>Santander</strong> (Office Banking): <em>Cuentas</em> → <em>Movimientos</em> o <em>Cartola</em> → elige la cuenta y el período → descarga en <strong>Excel</strong>. Sirve el .xls o el .xlsx; no uses el PDF.</p>
+    <p><strong>Otros bancos</strong>: descarga los movimientos en Excel o CSV. La app busca las columnas de fecha, descripción, cargo, abono (o monto) y saldo.</p>
     <p class="ayuda">Si la cartola es de otro RUT que la sociedad elegida, la app avisa para que no mezcles cuentas entre sociedades.</p>
   </div>
 </div>

@@ -1570,3 +1570,43 @@ class BancoTests(Base):
 
     def test_rechaza_pdf(self):
         self.assertContains(self.subir(b"%PDF-1.4 ..."), "Los PDF no se pueden leer")
+
+
+class CartolaSantanderTests(Base):
+    def test_excel_con_cargo_y_abono_del_mas_reciente_al_mas_antiguo(self):
+        import datetime as dt
+        import io
+        from openpyxl import Workbook
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import CuentaBancaria, MovimientoBancario
+        wb = Workbook()
+        h = wb.active
+        h.append(["Banco Santander - Office Banking"])
+        h.append(["Empresa: VERDE VERTICAL SPA   RUT: 77.552.628-9"])
+        h.append(["Cuenta Corriente N° 0-000-71234567-8"])
+        h.append(["Fecha", "Descripción Movimiento", "N° Documento", "Monto Cargo ($)", "Monto Abono ($)", "Saldo ($)"])
+        h.append([dt.datetime(2026, 11, 5), "PAGO PROVEEDOR", "123", 59500, None, 440500])
+        h.append([dt.datetime(2026, 11, 3), "TRANSF DE CLIENTE UNO SPA", "", None, 119000, 500000])
+        h.append([dt.datetime(2026, 11, 1), "DEPOSITO", "", None, 381000, 381000])
+        archivo = io.BytesIO()
+        wb.save(archivo)
+        r = self.client.post(reverse("banco_importar"), {
+            "archivos": [SimpleUploadedFile("cartola.xlsx", archivo.getvalue())]})
+        self.assertContains(r, "3 movimientos nuevos")
+        self.assertContains(r, "Los saldos de la cartola cuadran")
+        cuenta = CuentaBancaria.objects.get()
+        self.assertEqual((cuenta.banco, cuenta.numero), ("Banco Santander", "712345678"))
+        self.assertEqual(sorted(MovimientoBancario.objects.values_list("monto", flat=True)), [-59500, 119000, 381000])
+
+    def test_monto_con_columna_cargo_abono(self):
+        from .banco import leer
+        datos = leer("Fecha;Descripción;Monto;Cargo/Abono;Saldo\n01/11/2026;ABONO;1.000;A;11.000\n"
+                     "02/11/2026;CARGO;500;C;10.500\n".encode("cp1252"))
+        self.assertEqual([m["monto"] for m in datos["movimientos"]], [1000, -500])
+
+    def test_crear_cuenta_a_mano(self):
+        from .models import CuentaBancaria
+        self.client.post(reverse("banco_configuracion"), {"accion": "cuenta_nueva", "banco": "Banco Santander",
+                                                          "numero": "0-000-7123456-7", "alias": "Santander CC"})
+        c = CuentaBancaria.objects.get()
+        self.assertEqual((c.banco, c.numero, str(c)), ("Banco Santander", "71234567", "Santander CC"))

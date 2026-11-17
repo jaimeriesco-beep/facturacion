@@ -68,15 +68,26 @@ def _fecha(valor):
 
 
 COLUMNAS = {
-    "fecha": ["fecha", "fecha movimiento", "fecha contable", "fecha operacion"],
-    "descripcion": ["detalle movimiento", "descripcion", "detalle", "glosa", "descripcion movimiento"],
-    "cargo": ["cheque o cargo", "cargo", "cargos", "giros", "debito", "debitos", "cargo"],
-    "abono": ["deposito o abono", "abono", "abonos", "depositos", "credito", "creditos"],
-    "monto": ["monto", "importe"],
-    "saldo": ["saldo", "saldo diario", "saldo contable"],
-    "documento": ["docto nro", "n documento", "documento", "nro documento", "numero documento"],
-    "sucursal": ["sucursal", "oficina"],
+    "fecha": ["fecha", "fecha movimiento", "fecha contable", "fecha operacion", "fecha transaccion",
+              "fecha mov", "fecha de movimiento"],
+    "descripcion": ["detalle movimiento", "descripcion", "detalle", "glosa", "descripcion movimiento",
+                    "descripcion del movimiento", "concepto", "movimiento"],
+    "cargo": ["cheque o cargo", "cargo", "cargos", "giros", "debito", "debitos", "monto cargo",
+              "cargos y giros", "monto cargos", "cargo"],
+    "abono": ["deposito o abono", "abono", "abonos", "depositos", "credito", "creditos", "monto abono",
+              "depositos y abonos", "monto abonos"],
+    "monto": ["monto", "importe", "monto movimiento"],
+    "tipo": ["cargo abono", "tipo", "tipo movimiento", "c a", "d c"],
+    "saldo": ["saldo", "saldo diario", "saldo contable", "saldo disponible"],
+    "documento": ["docto nro", "n documento", "documento", "nro documento", "numero documento",
+                  "n operacion", "nro operacion", "numero operacion", "n de documento"],
+    "sucursal": ["sucursal", "oficina", "canal"],
 }
+# Para encabezados con agregados («Monto cargo ($)», «Fecha operación (dd/mm)»): se aceptan
+# también los que EMPIEZAN con alguno de estos nombres.
+PREFIJOS = {"fecha": ["fecha"], "descripcion": ["descripcion", "detalle", "glosa"],
+            "cargo": ["cargo", "monto cargo", "debito", "giro"], "abono": ["abono", "monto abono", "deposito", "credito"],
+            "saldo": ["saldo"]}
 
 
 def _posiciones(encabezado):
@@ -84,10 +95,30 @@ def _posiciones(encabezado):
     pos = {}
     for campo, nombres in COLUMNAS.items():
         for n in nombres:
-            if n in claves:
+            if n in claves and claves.index(n) not in pos.values():
                 pos[campo] = claves.index(n)
                 break
+    for campo, prefijos in PREFIJOS.items():
+        if campo in pos:
+            continue
+        for i, c in enumerate(claves):
+            if i not in pos.values() and any(c.startswith(p) for p in prefijos):
+                pos[campo] = i
+                break
     return pos
+
+
+def _con_signo(monto, tipo, encabezado):
+    """Aplica el signo según una columna de tipo: «Cargo»/«Débito»/«Giro» salen; «Abono»/«Crédito»/«Depósito»
+    entran. Una «C» suelta es «cargo», salvo que el encabezado sea «D/C» (débito/crédito)."""
+    t = _clave(tipo)
+    if not t:
+        return monto
+    if t.startswith(("cargo", "debito", "giro")) or t == "d" or (t == "c" and encabezado != "d c"):
+        return -abs(monto)
+    if t.startswith(("abono", "credito", "deposito")) or t == "a" or (t == "c" and encabezado == "d c"):
+        return abs(monto)
+    return monto
 
 
 def _filas_texto(contenido):
@@ -110,13 +141,35 @@ def _filas_excel(contenido):
     return [" ".join(str(c) for c in f) for f in filas], filas
 
 
+def _filas_xls(contenido):
+    """Excel antiguo (.xls binario), habitual en descargas de bancos como Santander."""
+    import xlrd
+    try:
+        libro = xlrd.open_workbook(file_contents=contenido)
+    except Exception:
+        raise ErrorCartola("No pude abrir el Excel (.xls). Ábrelo y guárdalo como .xlsx, o descarga la cartola en otro formato.")
+    hoja = libro.sheet_by_index(0)
+    filas = []
+    for r in range(hoja.nrows):
+        fila = []
+        for c in range(hoja.ncols):
+            celda = hoja.cell(r, c)
+            if celda.ctype == xlrd.XL_CELL_DATE:
+                fila.append(datetime(*xlrd.xldate_as_tuple(celda.value, libro.datemode)))
+            elif celda.ctype == xlrd.XL_CELL_EMPTY:
+                fila.append("")
+            else:
+                fila.append(celda.value)
+        filas.append(fila)
+    return [" ".join(str(c) for c in f) for f in filas], filas
+
+
 def leer(contenido, nombre=""):
     """Devuelve {'titular', 'rut', 'cuenta', 'banco', 'movimientos': [...]}."""
     if contenido[:4] == b"PK\x03\x04":                     # .xlsx
         lineas, filas = _filas_excel(contenido)
     elif contenido[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # .xls binario antiguo
-        raise ErrorCartola("Este archivo es un Excel antiguo (.xls binario). Ábrelo y guárdalo como "
-                           ".xlsx o CSV, o descarga la versión «Excel» que entrega el Banco de Chile.")
+        lineas, filas = _filas_xls(contenido)
     elif contenido[:5] == b"%PDF-":
         raise ErrorCartola("Los PDF no se pueden leer con precisión. Descarga la cartola en formato Excel o TXT.")
     else:
@@ -131,6 +184,21 @@ def leer(contenido, nombre=""):
                 datos["rut"] = f"{int(r.group(1))}-{r.group(2).upper()}"
             datos["titular"] = re.split(r"\s{2,}|\(", linea)[0].strip()
             break
+    # Otros bancos (Santander, etc.): banco, cuenta y RUT en las primeras líneas, si vienen.
+    cabecera = " ".join(lineas[:15])
+    if not datos["banco"]:
+        for nombre_banco, clave in (("Banco Santander", "santander"), ("BCI", "bci"), ("Itaú", "itau"),
+                                    ("BancoEstado", "bancoestado"), ("Scotiabank", "scotiabank"),
+                                    ("Banco Security", "security"), ("Banco BICE", "bice")):
+            if clave in _clave(cabecera).replace(" ", ""):
+                datos["banco"] = nombre_banco
+                break
+    if not datos["cuenta"]:
+        if m := re.search(r"(?:cuenta|cta)[^0-9\n]{0,30}?([0-9][0-9-]{5,})", cabecera, re.I):
+            datos["cuenta"] = m.group(1).replace("-", "").lstrip("0") or m.group(1)
+    if not datos["rut"]:
+        if r := re.search(r"\b(\d{1,2}\.?\d{3}\.?\d{3})-([\dkK])\b", cabecera):
+            datos["rut"] = f"{int(r.group(1).replace('.', ''))}-{r.group(2).upper()}"
     inicio = None
     for i, fila in enumerate(filas[:40]):
         pos = _posiciones(fila)
@@ -140,16 +208,19 @@ def leer(contenido, nombre=""):
     if inicio is None:
         raise ErrorCartola("No encontré las columnas de la cartola (fecha, cargo, abono). "
                            "¿Es la cartola del banco en formato Excel o TXT?")
+    encabezado_tipo = _clave(filas[inicio][pos["tipo"]]) if "tipo" in pos else ""
     vistos = {}
     for numero, fila in enumerate(filas[inicio + 1:], start=1):
         valor = lambda campo: fila[pos[campo]] if campo in pos and pos[campo] < len(fila) else ""  # noqa: E731
         fecha = _fecha(valor("fecha"))
         if not fecha:
             continue                                    # totales, líneas en blanco, notas
-        if "monto" in pos:
-            monto = _monto(valor("monto"))
-        else:
+        if "cargo" in pos and "abono" in pos:
             monto = abs(_monto(valor("abono"))) - abs(_monto(valor("cargo")))
+        else:
+            monto = _monto(valor("monto"))
+            if "tipo" in pos:
+                monto = _con_signo(monto, valor("tipo"), encabezado_tipo)
         if not monto:
             continue
         descripcion = re.sub(r"\s+", " ", str(valor("descripcion"))).strip()[:200] or "(sin descripción)"
@@ -163,6 +234,13 @@ def leer(contenido, nombre=""):
             "documento": documento, "sucursal": str(valor("sucursal")).strip()[:40], "huella": huella})
     if not datos["movimientos"]:
         raise ErrorCartola("La cartola no tiene movimientos.")
+    movs = datos["movimientos"]
+    if movs[0]["fecha"] > movs[-1]["fecha"]:
+        # Cartola del más reciente al más antiguo (habitual en Santander): se invierte el orden
+        # dentro de cada día para que el saldo se lea en secuencia.
+        total = len(movs)
+        for m in movs:
+            m["orden"] = total + 1 - m["orden"]
     return datos
 
 

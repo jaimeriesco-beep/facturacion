@@ -1,4 +1,5 @@
 """Pantallas del módulo Banco: cartolas, categorías y conciliación."""
+import re
 from datetime import date
 
 from django import forms
@@ -270,6 +271,16 @@ def configuracion(request):
         elif que == "regla_borrar":
             ReglaBanco.objects.filter(sociedad=soc, pk=request.POST.get("pk")).delete()
             messages.success(request, "Regla eliminada.")
+        elif que == "cuenta_nueva":
+            numero = re.sub(r"[^0-9]", "", request.POST.get("numero", "")).lstrip("0")
+            banco_nombre = request.POST.get("banco", "")
+            if not numero or banco_nombre not in CuentaBancaria.BANCOS:
+                messages.error(request, "Indica el banco y el número de cuenta.")
+            else:
+                c, creada = CuentaBancaria.objects.get_or_create(
+                    sociedad=soc, banco=banco_nombre, numero=numero,
+                    defaults={"alias": request.POST.get("alias", "").strip()[:60]})
+                messages.success(request, f"Cuenta «{c}» {'creada' if creada else 'ya existía'}.")
         elif que == "cuenta":
             c = get_object_or_404(CuentaBancaria, pk=request.POST.get("pk"), sociedad=soc)
             c.alias = request.POST.get("alias", "").strip()[:60]
@@ -280,4 +291,5 @@ def configuracion(request):
     return render(request, "core/banco/configuracion.html", {
         "categorias": soc.categorias_banco.annotate(n=Count("movimientos")),
         "reglas": soc.reglas_banco.select_related("categoria"),
-        "cuentas": soc.cuentas.annotate(n=Count("movimientos")), "tipos": CategoriaBanco.TIPOS})
+        "cuentas": soc.cuentas.annotate(n=Count("movimientos")), "tipos": CategoriaBanco.TIPOS,
+        "bancos": CuentaBancaria.BANCOS})

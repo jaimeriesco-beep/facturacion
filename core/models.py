@@ -162,6 +162,10 @@ class Cliente(ConRut):
     dias_pago = models.PositiveSmallIntegerField(
         "Plazo de pago (días)", default=30,
         help_text="Días desde la emisión hasta el vencimiento. 0 = contado.")
+    alias_banco = models.CharField(
+        "Cómo aparece en la cartola", max_length=300, blank=True,
+        help_text="Nombre con que llegan sus transferencias al banco, separados por coma si son varios. "
+                  "Ej.: Comercial Gran Colorado. Sirve para sugerir la conciliación de sus facturas.")
     activo = models.BooleanField(default=True)
 
     class Meta:
@@ -909,6 +913,9 @@ class Proveedor(models.Model):
     telefono = models.CharField("Teléfono", max_length=20, blank=True)
     banco = models.CharField("Datos de transferencia", max_length=200, blank=True,
                              help_text="Banco, tipo y número de cuenta.")
+    alias_banco = models.CharField(
+        "Cómo aparece en la cartola", max_length=300, blank=True,
+        help_text="Nombre con que aparecen los pagos a este proveedor en el banco, separados por coma.")
 
     class Meta:
         ordering = ["razon_social"]

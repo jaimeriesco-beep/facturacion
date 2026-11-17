@@ -194,6 +194,9 @@ def movimiento(request, pk):
                 n = banco.conciliar(m, asignaciones)
                 messages.success(request, f"Movimiento conciliado con {n} documento{'s' if n > 1 else ''}; "
                                           f"{'los cobros' if m.es_abono else 'los pagos'} quedaron registrados.")
+                if n and (persona := banco.aprender_alias(m, [d for d, _ in asignaciones])):
+                    messages.info(request, f"Desde ahora reconoceré «{banco.nombre_en_cartola(m.descripcion)}» en la cartola "
+                                           f"como {persona}, y sugeriré conciliar sus facturas solo.")
                 return redirect(al_listado)
         elif que == "comprobante":
             if not m.es_abono or not m.por_conciliar:
@@ -245,6 +248,8 @@ def movimiento(request, pk):
         return redirect(detalle)
 
     sugeridas = banco.sugerencias(m) if m.por_conciliar else []
+    propuesta = (next((x for x in banco.sugerencias_automaticas(soc) if x["mov"].pk == m.pk), None)
+                 if m.por_conciliar else None)
     sugeridos_ids = {(isinstance(s["doc"], Documento), s["doc"].pk) for s in sugeridas}
     if m.es_abono:
         otros = [d for d in soc.documentos.por_cobrar().select_related("cliente").order_by("fecha_emision")
@@ -258,6 +263,7 @@ def movimiento(request, pk):
         "m": m, "sugeridas": sugeridas, "otros": otros, "categorias": categorias_banco_de(soc),
         "conciliaciones": m.conciliaciones.select_related("pago__documento", "pago_compra__compra"),
         "regla_sugerida": banco.texto_regla(m.descripcion), "siguiente": siguiente, "volver": volver,
+        "propuesta": propuesta,
         **(_sugerencia_comprobante(soc, m) if m.es_abono and m.por_conciliar else {})})
 
 
@@ -601,7 +607,7 @@ def _doc_de(soc, tipo, pk):
 def _filtrar_sugerencias(lista, datos):
     if datos.get("tipo") in ("v", "c"):
         lista = [x for x in lista if x["tipo"] == datos["tipo"]]
-    if datos.get("motivo") in ("descripcion", "monto"):
+    if datos.get("motivo") in ("descripcion", "antiguas", "monto"):
         lista = [x for x in lista if x["motivo"] == datos["motivo"]]
     return lista
 
@@ -612,33 +618,33 @@ def sugerencias(request):
     soc = request.sociedad
     if request.method == "POST":
         que = request.POST.get("accion")
-        pares = request.POST.getlist("par")          # «mov:tipo:doc»
+        # Se vuelve a calcular en el momento: solo se aplica lo que sigue siendo válido.
+        actuales = banco.sugerencias_automaticas(soc)
         if que == "todas":                           # todas las sugerencias (con los filtros elegidos), no solo la página
-            pares = [f"{x['mov'].pk}:{x['tipo']}:{x['doc'].pk}"
-                     for x in _filtrar_sugerencias(banco.sugerencias_automaticas(soc), request.POST)]
+            elegidas = _filtrar_sugerencias(actuales, request.POST)
             que = "conciliar"
+        else:
+            ids = {int(x) for x in request.POST.getlist("mov") if x.isdigit()}
+            elegidas = [x for x in actuales if x["mov"].pk in ids]
         hechas = 0
-        for par in pares:
-            try:
-                mov_id, tipo, doc_id = par.split(":")
-            except ValueError:
-                continue
-            m = _movimientos(soc).filter(pk=mov_id).first() if mov_id.isdigit() else None
-            doc = _doc_de(soc, tipo, doc_id)
-            if not m or not doc:
-                continue
+        for x in elegidas:
             if que == "rechazar":
-                SugerenciaRechazada.objects.get_or_create(movimiento=m, tipo=tipo, doc_id=doc.pk)
+                for doc, _ in x["asignaciones"]:
+                    SugerenciaRechazada.objects.get_or_create(movimiento=x["mov"], tipo=x["tipo"], doc_id=doc.pk)
                 hechas += 1
-            elif m.por_conciliar and doc.saldo > 0:
-                hechas += bool(banco.conciliar(m, [(doc, min(m.por_conciliar, doc.saldo))]))
+                continue
+            m = _movimientos(soc).get(pk=x["mov"].pk)
+            asignaciones = [(_doc_de(soc, x["tipo"], doc.pk), parte) for doc, parte in x["asignaciones"]]
+            hechas += bool(banco.conciliar(m, [(d, p) for d, p in asignaciones if d]))
         banco.olvidar_sugerencias(soc)
         if que == "rechazar":
             messages.success(request, "Sugerencia descartada. No se volverá a proponer.")
         elif hechas:
             messages.success(request, f"{hechas} movimiento{'s' if hechas != 1 else ''} conciliado{'s' if hechas != 1 else ''}; "
                                       "los cobros y pagos quedaron registrados.")
-        return redirect("banco_sugerencias")
+        elif not elegidas:
+            messages.error(request, "La sugerencia ya no está vigente (el movimiento o la factura cambiaron).")
+        return redirect(volver_seguro(request, "/banco/", reverse("banco_sugerencias")))
     lista = _filtrar_sugerencias(banco.sugerencias_automaticas(soc), request.GET)
     pagina, ctx_paginas = paginar(request, lista, 20)
     return render(request, "core/banco/sugerencias.html", {

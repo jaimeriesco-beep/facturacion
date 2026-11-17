@@ -27,6 +27,18 @@
 <div class="perfil-grid">
   <div>
   {% if m.por_conciliar %}
+  {% if propuesta and propuesta.asignaciones|length > 1 or propuesta and propuesta.motivo == 'antiguas' %}
+  <form method="post" action="{% url 'banco_sugerencias' %}" class="panel propuesta-rayo">{% csrf_token %}
+    <input type="hidden" name="accion" value="conciliar"><input type="hidden" name="mov" value="{{ m.pk }}"><input type="hidden" name="volver" value="{{ volver }}#mov-{{ m.pk }}">
+    <h2>⚡ Propuesta: {{ propuesta.persona }}</h2>
+    <p class="suave" style="margin-top:-4px">{% if propuesta.como == 'alias' %}Reconocido por cómo aparece en la cartola.{% else %}Reconocido por el nombre en la descripción.{% endif %} Se pagan sus {% if m.es_abono %}facturas{% else %}compras{% endif %} pendientes de la más antigua a la más nueva:</p>
+    <ul class="lista-asignaciones">{% for d, parte in propuesta.asignaciones %}
+      <li><span>{{ d }}</span> <span class="suave">· {{ d.fecha_emision|date:"d/m/Y" }}</span><span class="monto">{{ parte|clp }}{% if parte < d.saldo %} <span class="suave">de {{ d.saldo|clp }}</span>{% endif %}</span></li>
+    {% endfor %}</ul>
+    {% if propuesta.resto %}<p class="ayuda">Quedan {{ propuesta.resto|clp }} sin documento pendiente.</p>{% endif %}
+    <div class="acciones" style="margin-top:12px"><button type="submit" class="primario">Conciliar así</button><span class="suave">o elige otros documentos abajo</span></div>
+  </form>
+  {% endif %}
   {% if m.es_abono and not sugeridas %}
   <details class="panel comprobante-desde-banco"{% if concepto_sugerido or not sugeridas and not otros %} open{% endif %}>
     <summary><h2 style="display:inline">¿Es un ingreso sin factura?</h2> <span class="suave">Arriendo por contrato, reembolso, otro ingreso</span></summary>

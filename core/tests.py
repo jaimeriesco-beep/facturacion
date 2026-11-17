@@ -1945,6 +1945,7 @@ class RayoTests(Base):
     def test_sugiere_por_descripcion_y_monto_sin_adivinar_y_concilia_todas(self):
         from .banco import sugerencias_automaticas
         pares = {(s["mov"].pk, s["doc"].pk, s["motivo"]) for s in sugerencias_automaticas(self.soc)}
+        # m_ambiguo («OTRA PERSONA») tiene dos facturas posibles de 59.500: no se adivina
         self.assertEqual(pares, {(self.m_nombre.pk, self.f1.pk, "descripcion"),
                                  (self.m_compra.pk, self.compra.pk, "descripcion")})
         r = self.client.get(reverse("banco_sugerencias"))
@@ -1963,7 +1964,7 @@ class RayoTests(Base):
         self.f3.a_papelera()                                        # queda una sola factura de 59.500
         s = {x["mov"].pk: x for x in sugerencias_automaticas(self.soc)}
         self.assertEqual((s[self.m_ambiguo.pk]["doc"], s[self.m_ambiguo.pk]["motivo"]), (self.f2, "monto"))
-        self.client.post(reverse("banco_sugerencias"), {"accion": "rechazar", "par": f"{self.m_ambiguo.pk}:v:{self.f2.pk}"})
+        self.client.post(reverse("banco_sugerencias"), {"accion": "rechazar", "mov": self.m_ambiguo.pk})
         self.assertNotIn(self.m_ambiguo.pk, {x["mov"].pk for x in sugerencias_automaticas(self.soc)})
 
     def test_conciliar_desde_la_factura_y_desde_la_compra(self):
@@ -1984,6 +1985,53 @@ class RayoTests(Base):
         r = self.client.post(reverse("conciliar_documento", args=["v", self.f2.pk]), {"movimiento": self.m_nada.pk},
                              follow=True)
         self.assertContains(r, "Elige el movimiento")              # un cargo no paga una venta
+
+
+class FacturasAntiguasTests(Base):
+    """Un cliente reconocido en la cartola paga sus facturas de la más antigua a la más nueva."""
+
+    def setUp(self):
+        super().setUp()
+        from .models import Cliente, CuentaBancaria, MovimientoBancario
+        self.cuenta = CuentaBancaria.objects.create(sociedad=self.soc, banco="Banco de Chile", numero="1")
+        self.gran = Cliente.objects.create(sociedad=self.soc, rut="76086428-5", razon_social="Comercial Gran Colorado Spa")
+        self.cli = self.gran
+        self.a = self.factura(lineas=((1, 10000, False),), folio=20, emision=date(2026, 10, 1))   # 11.900
+        self.b = self.factura(lineas=((1, 20000, False),), folio=21, emision=date(2026, 10, 15))  # 23.800
+        self.c = self.factura(lineas=((1, 30000, False),), folio=22, emision=date(2026, 11, 1))   # 35.700
+        self.mov = lambda d, m, t: MovimientoBancario.objects.create(  # noqa: E731
+            cuenta=self.cuenta, fecha=date(2026, 11, d), monto=m, descripcion=t, huella=f"{d}{m}{t}")
+
+    def test_paga_de_la_mas_antigua_a_la_mas_nueva(self):
+        from .banco import sugerencias_automaticas
+        m1 = self.mov(5, 20000, "Traspaso De: Comercial Gran Colorado Spa")
+        m2 = self.mov(6, 30000, "Traspaso De: Comercial Gran Colorado Spa")
+        s = {x["mov"].pk: x for x in sugerencias_automaticas(self.soc)}
+        self.assertEqual([(d.folio, p) for d, p in s[m1.pk]["asignaciones"]], [(20, 11900), (21, 8100)])
+        self.assertEqual(s[m1.pk]["motivo"], "antiguas")
+        # el segundo pago sigue donde quedó el primero
+        self.assertEqual([(d.folio, p) for d, p in s[m2.pk]["asignaciones"]], [(21, 15700), (22, 14300)])
+        self.client.post(reverse("banco_sugerencias"), {"accion": "todas"})
+        saldos = {d.folio: d.saldo_a for d in Documento.objects.con_saldo().filter(folio__in=(20, 21, 22))}
+        self.assertEqual(saldos, {20: 0, 21: 0, 22: 35700 - 14300})
+
+    def test_monto_exacto_del_cliente_gana_a_la_mas_antigua(self):
+        from .banco import sugerencias_automaticas
+        m = self.mov(5, 35700, "TRASPASO DE: COMERCIAL GRAN COLORADO")
+        x = sugerencias_automaticas(self.soc)[0]
+        self.assertEqual((x["mov"], [d.folio for d, _ in x["asignaciones"]], x["motivo"]), (m, [22], "descripcion"))
+
+    def test_aprende_como_viene_el_nombre_al_conciliar_a_mano(self):
+        from .banco import sugerencias_automaticas
+        m = self.mov(5, 11900, "Traspaso De: GCC Distribuidora Ltda")      # nombre distinto al de la factura
+        self.mov(20, 23800, "Traspaso De: GCC Distribuidora Ltda")
+        r = self.client.post(reverse("banco_movimiento", args=[m.pk]),
+                             {"accion": "conciliar", "doc": [f"v-{self.a.pk}"], f"monto-v-{self.a.pk}": "11900"}, follow=True)
+        self.assertContains(r, "Desde ahora reconoceré")
+        self.gran.refresh_from_db()
+        self.assertEqual(self.gran.alias_banco, "GCC Distribuidora Ltda")
+        x = sugerencias_automaticas(self.soc)[0]
+        self.assertEqual(([d.folio for d, _ in x["asignaciones"]], x["como"]), ([21], "alias"))
 
 
 class CartolaSantanderTests(Base):

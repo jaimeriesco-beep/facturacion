@@ -792,54 +792,112 @@ def movimientos_por_conciliar(sociedad):
             and (not m.categoria_id or m.categoria.nombre in (COBRO_CLIENTES, PAGO_PROVEEDORES))]
 
 
-def sugerencias_automaticas(sociedad):
-    """Parejas movimiento ↔ documento con el mismo monto pendiente, una a una.
+PREFIJOS_BANCO = re.compile(
+    r"^(app-?)?(traspaso|transferencia|transf|pago|abono|cargo|dep(osito)?)\.?\s*(de|a|desde|para)?\s*:?\s*", re.I)
 
-    Se recomienda por descripción cuando el nombre del cliente o proveedor aparece en el
-    movimiento, y por monto cuando el monto calza con un solo documento posible.
+
+def nombre_en_cartola(descripcion):
+    """Nombre del cliente o proveedor tal como viene en la cartola (sin «Traspaso de:» ni números)."""
+    texto = PREFIJOS_BANCO.sub("", texto_regla(descripcion)).strip(" -:.,")
+    return texto[:80]
+
+
+class _Contraparte:
+    """Clientes o proveedores con sus documentos pendientes, para reconocerlos en la cartola."""
+
+    def __init__(self, filas):
+        # filas: [(persona, documento, saldo)]
+        self.docs = {}
+        self.personas = {}
+        for persona, doc, saldo in filas:
+            self.personas[persona.pk] = persona
+            self.docs.setdefault(persona.pk, []).append(doc)
+        self.saldo = {(d.pk): s for _, d, s in filas}
+        self.nombres = {pk: _palabras(f"{p.razon_social} {p.nombre_fantasia}") for pk, p in self.personas.items()}
+        self.alias = {pk: [_clave(a) for a in (p.alias_banco or "").split(",") if len(_clave(a)) >= 3]
+                      for pk, p in self.personas.items()}
+
+    def reconocer(self, descripcion):
+        """(pk de la persona, «alias» o «nombre») si la descripción la identifica sin dudas."""
+        texto = f" {_clave(descripcion)} "
+        por_alias = [pk for pk, alias in self.alias.items() if any(f" {a} " in texto for a in alias)]
+        if len(por_alias) == 1:
+            return por_alias[0], "alias"
+        palabras = _palabras(descripcion)
+        puntajes = []
+        for pk, nombre in self.nombres.items():
+            if nombre:
+                comunes = len(palabras & nombre)
+                if comunes and comunes / len(nombre) >= 0.6:
+                    puntajes.append((comunes / len(nombre), comunes, pk))
+        puntajes.sort(reverse=True)
+        if puntajes and (len(puntajes) == 1 or puntajes[0][:2] > puntajes[1][:2]):
+            return puntajes[0][2], "nombre"
+        return None, None
+
+    def pendientes(self, pk, fecha):
+        """Documentos de la persona con saldo, del más antiguo al más nuevo, emitidos hasta la fecha del pago."""
+        return sorted((d for d in self.docs.get(pk, []) if self.saldo[d.pk] > 0
+                       and (fecha - d.fecha_emision).days >= -DIAS_DESPUES),
+                      key=lambda d: (d.fecha_emision, d.folio or 0, d.pk))
+
+
+def sugerencias_automaticas(sociedad):
+    """Propuestas de conciliación para los movimientos pendientes, del más antiguo al más nuevo.
+
+    1. Si la descripción identifica al cliente o proveedor (por su nombre o por «cómo aparece en
+       la cartola»): si una de sus facturas tiene justo ese saldo, esa; si no, se pagan sus
+       facturas de la más antigua a la más nueva hasta completar el monto.
+    2. Si no hay nombre, pero el monto calza con un solo documento pendiente, ese.
+    Cada documento se usa una sola vez entre todas las propuestas.
     """
     from .models import SugerenciaRechazada
     rechazos = set(SugerenciaRechazada.objects.filter(movimiento__cuenta__sociedad=sociedad)
                    .values_list("movimiento_id", "tipo", "doc_id"))
-    docs = {"v": {}, "c": {}}
-    for d in sociedad.documentos.por_cobrar().select_related("cliente"):
-        docs["v"].setdefault(d.saldo, []).append((d, _palabras(f"{d.cliente.razon_social} {d.cliente.nombre_fantasia}")))
-    for c in sociedad.compras.con_saldo().select_related("proveedor"):
-        if c.saldo > 0 and not c.es_nota_credito:
-            docs["c"].setdefault(c.saldo, []).append((c, _palabras(f"{c.proveedor.razon_social} {c.proveedor.nombre_fantasia}")))
-    candidatas = []
-    for m in movimientos_por_conciliar(sociedad):
+    lados = {
+        "v": _Contraparte([(d.cliente, d, d.saldo) for d in sociedad.documentos.por_cobrar().select_related("cliente")]),
+        "c": _Contraparte([(c.proveedor, c, c.saldo) for c in sociedad.compras.con_saldo().select_related("proveedor")
+                           if c.saldo > 0 and not c.es_nota_credito]),
+    }
+    resultado = []
+    for m in sorted(movimientos_por_conciliar(sociedad), key=lambda x: (x.fecha, x.orden, x.pk)):
         tipo = "v" if m.es_abono else "c"
-        palabras = _palabras(m.descripcion)
-        posibles = []
-        for doc, nombre in docs[tipo].get(m.por_conciliar, []):
-            if (m.pk, tipo, doc.pk) in rechazos:
-                continue
-            dias = (m.fecha - doc.fecha_emision).days
-            if not -DIAS_DESPUES <= dias <= DIAS_ANTES:
-                continue
-            posibles.append((doc, bool(palabras & nombre), abs(dias)))
-        por_nombre = [p for p in posibles if p[1]]
-        if por_nombre:
-            elegidos, motivo = por_nombre, "descripcion"
-        elif len(posibles) == 1:
-            elegidos, motivo = posibles, "monto"
+        lado = lados[tipo]
+        monto = m.por_conciliar
+        rechazado = lambda doc: (m.pk, tipo, doc.pk) in rechazos  # noqa: E731
+        asignaciones, motivo = [], None
+        pk, como = lado.reconocer(m.descripcion)
+        if pk:
+            docs = [d for d in lado.pendientes(pk, m.fecha) if not rechazado(d)]
+            exacto = next((d for d in docs if lado.saldo[d.pk] == monto), None)
+            if exacto:
+                asignaciones, motivo = [(exacto, monto)], "descripcion"
+            elif docs:
+                restante = monto
+                for d in docs:
+                    if restante <= 0:
+                        break
+                    parte = min(restante, lado.saldo[d.pk])
+                    asignaciones.append((d, parte))
+                    restante -= parte
+                motivo = "antiguas"
         else:
-            continue            # varios documentos con el mismo monto y ningún nombre: no se adivina
-        for doc, _, dias in elegidos:
-            candidatas.append({"mov": m, "doc": doc, "tipo": tipo, "motivo": motivo, "dias": dias,
-                               "monto": m.por_conciliar})
-    # Una a una: primero las de descripción, luego las más cercanas en fecha.
-    candidatas.sort(key=lambda c: (c["motivo"] != "descripcion", c["dias"], c["mov"].fecha))
-    usados_mov, usados_doc, resultado = set(), set(), []
-    for c in candidatas:
-        clave_doc = (c["tipo"], c["doc"].pk)
-        if c["mov"].pk in usados_mov or clave_doc in usados_doc:
+            posibles = [d for docs in lado.docs.values() for d in docs
+                        if lado.saldo[d.pk] == monto and not rechazado(d)
+                        and -DIAS_DESPUES <= (m.fecha - d.fecha_emision).days <= DIAS_ANTES]
+            if len(posibles) == 1:
+                asignaciones, motivo = [(posibles[0], monto)], "monto"
+        if not asignaciones:
             continue
-        usados_mov.add(c["mov"].pk)
-        usados_doc.add(clave_doc)
-        resultado.append(c)
-    resultado.sort(key=lambda c: (c["mov"].fecha, c["mov"].pk), reverse=True)
+        for d, parte in asignaciones:
+            lado.saldo[d.pk] -= parte
+        primero = asignaciones[0][0]
+        resultado.append({"mov": m, "tipo": tipo, "motivo": motivo, "como": como, "asignaciones": asignaciones,
+                          "doc": primero, "monto": sum(p for _, p in asignaciones),
+                          "persona": lado.personas.get(pk) if pk else None,
+                          "completo": sum(p for _, p in asignaciones) == monto,
+                          "resto": monto - sum(p for _, p in asignaciones)})
+    resultado.reverse()          # lo más reciente primero en pantalla
     return resultado
 
 
@@ -869,6 +927,8 @@ def movimientos_para_documento(doc, limite=8):
     nombre = (f"{doc.proveedor.razon_social} {doc.proveedor.nombre_fantasia}" if es_compra
               else f"{doc.cliente.razon_social} {doc.cliente.nombre_fantasia}")
     palabras = _palabras(nombre)
+    persona = doc.proveedor if es_compra else doc.cliente
+    alias = [_clave(x) for x in (persona.alias_banco or "").split(",") if len(_clave(x)) >= 3]
     saldo = doc.saldo
     resultado = []
     for m in movimientos_por_conciliar(sociedad):
@@ -878,7 +938,8 @@ def movimientos_para_documento(doc, limite=8):
         if dias < -DIAS_DESPUES:
             continue
         puntos = (60 if m.por_conciliar == saldo else 10 if m.por_conciliar < saldo else 0)
-        nombre_ok = bool(palabras & _palabras(m.descripcion))
+        nombre_ok = bool(palabras & _palabras(m.descripcion)) or any(
+            f" {a} " in f" {_clave(m.descripcion)} " for a in alias)
         puntos += 30 if nombre_ok else 0
         puntos -= min(dias, 120) // 30
         if puntos >= 10:
@@ -886,3 +947,26 @@ def movimientos_para_documento(doc, limite=8):
                               "monto": min(m.por_conciliar, saldo)})
     resultado.sort(key=lambda r: (-r["puntos"], abs((r["mov"].fecha - doc.fecha_emision).days)))
     return resultado[:limite]
+
+
+def aprender_alias(movimiento, documentos):
+    """Si se concilió a mano con documentos de un solo cliente o proveedor cuyo nombre no aparece en
+    la cartola, recuerda cómo viene escrito para sugerirlo solo la próxima vez. Devuelve la persona o None."""
+    from .models import Compra
+    personas = {(d.proveedor if isinstance(d, Compra) else d.cliente) for d in documentos}
+    if len(personas) != 1:
+        return None
+    persona = personas.pop()
+    nombre = nombre_en_cartola(movimiento.descripcion)
+    clave = _clave(nombre)
+    if len(clave) < 4 or len(_palabras(nombre)) == 0:
+        return None
+    texto = f" {_clave(movimiento.descripcion)} "
+    actuales = [_clave(a) for a in (persona.alias_banco or "").split(",") if a.strip()]
+    nombre_propio = _palabras(f"{persona.razon_social} {persona.nombre_fantasia}")
+    if any(f" {a} " in texto for a in actuales if a) or (
+            nombre_propio and len(_palabras(movimiento.descripcion) & nombre_propio) / len(nombre_propio) >= 0.6):
+        return None             # ya se reconoce
+    persona.alias_banco = ", ".join([a.strip() for a in (persona.alias_banco or "").split(",") if a.strip()] + [nombre])[:300]
+    persona.save(update_fields=["alias_banco"])
+    return persona

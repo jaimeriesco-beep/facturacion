@@ -340,7 +340,7 @@ def compra_eliminar(request, pk):
 class ProveedorForm(FormBase):
     class Meta:
         model = Proveedor
-        fields = ["razon_social", "nombre_fantasia", "categoria", "dias_pago", "email", "telefono", "banco"]
+        fields = ["razon_social", "nombre_fantasia", "categoria", "dias_pago", "email", "telefono", "banco", "alias_banco"]
         labels = {"categoria": "Categoría habitual"}
 
     def __init__(self, *args, **kwargs):

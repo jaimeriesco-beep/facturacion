@@ -606,3 +606,7 @@ tr:target td { background: var(--verde-claro); transition: background 1.5s; }
 .conciliar-doc ul { list-style: none; padding: 0; margin: 0; }
 .conciliar-doc form { display: flex; gap: 6px; align-items: center; margin: 0; }
 .conciliar-doc input { width: 110px; }
+.lista-asignaciones { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; }
+.lista-asignaciones li { display: flex; gap: 6px; align-items: baseline; }
+.lista-asignaciones .monto { margin-left: auto; font-weight: 600; }
+.propuesta-rayo { border-left: 3px solid #e0a800; }

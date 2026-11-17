@@ -160,7 +160,7 @@ class ClienteForm(FormBase):
     class Meta:
         model = Cliente
         fields = ["nombre_fantasia", "razon_social", "rut", "giro", "direccion", "comuna",
-                  "ciudad", "dias_pago", "activo", "contacto_unico",
+                  "ciudad", "dias_pago", "alias_banco", "activo", "contacto_unico",
                   *(f"{rol}_{dato}" for rol, _ in Cliente.ROLES
                     for dato in ("nombre", "email", "telefono"))]
 
